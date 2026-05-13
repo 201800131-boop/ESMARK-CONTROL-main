@@ -1,0 +1,10 @@
+project_id = "nvrcimzzbyglpjhndhbn"
+
+[functions.trello_cards_by_my_area]
+verify_jwt = false
+
+[functions.backfill_trello_desc]
+verify_jwt = true
+
+[functions.manage_users]
+verify_jwt = true

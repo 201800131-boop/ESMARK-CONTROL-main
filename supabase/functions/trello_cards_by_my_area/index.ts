@@ -87,7 +87,7 @@ serve(async (req: Request) => {
     const lists = (await listsRes.json()) as TrelloList[];
     const listMeta = new Map(lists.map((list) => [list.id, { name: list.name, pos: list.pos ?? 0 }]));
 
-    const url = `https://api.trello.com/1/boards/${bid}/cards?key=${key}&token=${tok}&fields=id,name,url,idList,pos,desc&attachments=open`;
+    const url = `https://api.trello.com/1/boards/${bid}/cards?key=${key}&token=${tok}&fields=id,name,url,idList,pos,desc&attachments=true`;
     const res = await fetch(url);
 
     if (!res.ok) {

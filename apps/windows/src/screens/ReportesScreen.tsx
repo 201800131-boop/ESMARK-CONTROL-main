@@ -9,6 +9,18 @@ interface Props {
 type AnyRow = Record<string, unknown>;
 type TrelloLookupCard = Record<string, unknown>;
 
+interface ReportEditForm {
+  fecha: string;
+  area: string;
+  nombrePedido: string;
+  cantidadDanada: string;
+  motivoDano: string;
+  tipoTrabajo: string;
+  tipoDano: string;
+  personaDano: string;
+  observacion: string;
+}
+
 function normalizeLookupCard(item: Record<string, unknown>): TrelloLookupCard {
   const descValue = typeof item.desc === 'string'
     ? item.desc
@@ -107,6 +119,13 @@ function getFirstNonEmpty(...values: Array<string | null>): string | null {
   return null;
 }
 
+function getRowNumber(row: AnyRow, key: string): number | null {
+  const value = row[key];
+  if (value == null) return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
 function normalizeText(value: string): string {
   return value
     .normalize('NFD')
@@ -158,6 +177,19 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
   const [areaNameById, setAreaNameById] = React.useState<Record<string, string>>({});
   const [userAreaId, setUserAreaId] = React.useState<string | null>(null);
   const [selectedRow, setSelectedRow] = React.useState<AnyRow | null>(null);
+  const [editingRow, setEditingRow] = React.useState<AnyRow | null>(null);
+  const [editForm, setEditForm] = React.useState<ReportEditForm>({
+    fecha: '',
+    area: 'impresion',
+    nombrePedido: '',
+    cantidadDanada: '1',
+    motivoDano: '',
+    tipoTrabajo: '',
+    tipoDano: '',
+    personaDano: '',
+    observacion: '',
+  });
+  const [mutatingReport, setMutatingReport] = React.useState(false);
   const [trelloCatalog, setTrelloCatalog] = React.useState<TrelloLookupCard[] | null>(null);
   const [trelloMatchedCard, setTrelloMatchedCard] = React.useState<TrelloLookupCard | null>(null);
   const [trelloLookupLoading, setTrelloLookupLoading] = React.useState(false);
@@ -213,8 +245,8 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
     setLoading(true);
     setError(null);
 
-    const selectWithDesc = 'id,fecha,fecha_registro,area_id,nombre_pedido,cantidad_danada,motivo_dano,trello_card_id,trello_card_name,trello_card_url,trello_list_id,trello_list_name,trello_board_id,trello_board_name,trello_card_desc';
-    const selectWithoutDesc = 'id,fecha,fecha_registro,area_id,nombre_pedido,cantidad_danada,motivo_dano,trello_card_id,trello_card_name,trello_card_url,trello_list_id,trello_list_name,trello_board_id,trello_board_name';
+    const selectWithDesc = 'id,fecha,fecha_registro,area_id,nombre_pedido,cantidad_danada,motivo_dano,tipo_trabajo,tipo_dano,persona_dano,observacion,trello_card_id,trello_card_name,trello_card_url,trello_list_id,trello_list_name,trello_board_id,trello_board_name,trello_card_desc';
+    const selectWithoutDesc = 'id,fecha,fecha_registro,area_id,nombre_pedido,cantidad_danada,motivo_dano,tipo_trabajo,tipo_dano,persona_dano,observacion,trello_card_id,trello_card_name,trello_card_url,trello_list_id,trello_list_name,trello_board_id,trello_board_name';
 
     const buildQuery = (selectText: string) => {
       let q = supabase
@@ -506,6 +538,114 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
     void loadClosures();
   }
 
+  function startEditReport(row: AnyRow): void {
+    if (user.role !== 'admin') return;
+    const rowAreaId = String(row.area_id ?? '');
+    const areaCode = Object.entries(areaIdByCode).find(([, id]) => id === rowAreaId)?.[0] ?? 'impresion';
+    setSelectedRow(row);
+    setEditingRow(row);
+    setEditForm({
+      fecha: String(row.fecha ?? row.fecha_registro ?? '').slice(0, 10),
+      area: areaCode,
+      nombrePedido: getRowString(row, 'nombre_pedido') ?? '',
+      cantidadDanada: String(getRowNumber(row, 'cantidad_danada') ?? 1),
+      motivoDano: getRowString(row, 'motivo_dano') ?? '',
+      tipoTrabajo: getRowString(row, 'tipo_trabajo') ?? '',
+      tipoDano: getRowString(row, 'tipo_dano') ?? '',
+      personaDano: getRowString(row, 'persona_dano') ?? '',
+      observacion: getRowString(row, 'observacion') ?? '',
+    });
+  }
+
+  async function handleSaveReport(): Promise<void> {
+    if (user.role !== 'admin' || !editingRow) return;
+
+    const recordId = getRowString(editingRow, 'id');
+    const qty = Number(editForm.cantidadDanada);
+    const areaId = areaIdByCode[editForm.area];
+    if (!recordId) {
+      setError('No se encontro el ID del reporte.');
+      return;
+    }
+    if (!areaId) {
+      setError('Selecciona un area valida.');
+      return;
+    }
+    if (!editForm.nombrePedido.trim() || !editForm.motivoDano.trim() || !Number.isFinite(qty) || qty <= 0) {
+      setError('Completa pedido, motivo y una cantidad valida.');
+      return;
+    }
+
+    setMutatingReport(true);
+    setError(null);
+    const payload = {
+      fecha: editForm.fecha || undefined,
+      area_id: areaId,
+      nombre_pedido: editForm.nombrePedido.trim(),
+      cantidad_danada: qty,
+      motivo_dano: editForm.motivoDano.trim(),
+      tipo_trabajo: editForm.tipoTrabajo.trim() || null,
+      tipo_dano: editForm.tipoDano.trim() || null,
+      persona_dano: editForm.personaDano.trim() || null,
+      observacion: editForm.observacion.trim() || null,
+    };
+
+    const { data, error: updateError } = await supabase
+      .from('pedidos_danados')
+      .update(payload)
+      .eq('id', recordId)
+      .select('*')
+      .maybeSingle();
+
+    if (updateError) {
+      setError(updateError.message);
+      setMutatingReport(false);
+      return;
+    }
+
+    const updatedRow = ((data ?? { ...editingRow, ...payload }) as AnyRow);
+    setRows((current) => current.map((row) => (String(row.id ?? '') === recordId ? { ...row, ...updatedRow } : row)));
+    setSelectedRow((current) => (current && String(current.id ?? '') === recordId ? { ...current, ...updatedRow } : current));
+    setEditingRow(null);
+    setSuccess('Reporte actualizado.');
+    window.setTimeout(() => setSuccess(null), 3000);
+    setMutatingReport(false);
+    void loadRows();
+  }
+
+  async function handleDeleteReport(row: AnyRow): Promise<void> {
+    if (user.role !== 'admin') return;
+    const recordId = getRowString(row, 'id');
+    if (!recordId) {
+      setError('No se encontro el ID del reporte.');
+      return;
+    }
+    const label = getRowString(row, 'nombre_pedido') ?? 'este reporte';
+    const confirmed = window.confirm(`Eliminar "${label}"? Esta accion no se puede deshacer.`);
+    if (!confirmed) return;
+
+    setMutatingReport(true);
+    setError(null);
+    const { error: deleteError } = await supabase
+      .from('pedidos_danados')
+      .delete()
+      .eq('id', recordId);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      setMutatingReport(false);
+      return;
+    }
+
+    setRows((current) => current.filter((currentRow) => String(currentRow.id ?? '') !== recordId));
+    if (selectedRow && String(selectedRow.id ?? '') === recordId) setSelectedRow(null);
+    if (editingRow && String(editingRow.id ?? '') === recordId) setEditingRow(null);
+    setSuccess('Reporte eliminado.');
+    window.setTimeout(() => setSuccess(null), 3000);
+    setMutatingReport(false);
+    void loadRows();
+  }
+
   return (
     <div>
       <div style={styles.hero}>
@@ -565,6 +705,7 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
                 <th style={styles.th}>Pedido</th>
                 <th style={styles.th}>Cantidad</th>
                 <th style={styles.th}>Motivo</th>
+                {user.role === 'admin' && <th style={styles.th}>Acciones</th>}
               </tr>
             </thead>
             <tbody>
@@ -580,11 +721,23 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
                   <td style={styles.td}>{String(r.nombre_pedido ?? '-')}</td>
                   <td style={styles.td}>{String(r.cantidad_danada ?? '-')}</td>
                   <td style={styles.td}>{String(r.motivo_dano ?? '-')}</td>
+                  {user.role === 'admin' && (
+                    <td style={styles.td} onClick={(e) => e.stopPropagation()}>
+                      <div style={styles.rowActions}>
+                        <button type="button" style={styles.inlineBtn} onClick={() => startEditReport(r)} disabled={mutatingReport}>
+                          Editar
+                        </button>
+                        <button type="button" style={styles.inlineDangerBtn} onClick={() => void handleDeleteReport(r)} disabled={mutatingReport}>
+                          Eliminar
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td style={styles.td} colSpan={5}>Sin registros para el filtro actual.</td>
+                  <td style={styles.td} colSpan={user.role === 'admin' ? 6 : 5}>Sin registros para el filtro actual.</td>
                 </tr>
               )}
             </tbody>
@@ -600,7 +753,27 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
                 <h3 style={styles.modalTitle}>Detalle del registro</h3>
                 <p style={styles.modalSubtitle}>Revisa la información general y la referencia de Trello asociada.</p>
               </div>
-              <button style={styles.modalCloseBtn} onClick={() => setSelectedRow(null)}>Cerrar</button>
+              <div style={styles.modalActions}>
+                {user.role === 'admin' && (
+                  <>
+                    <button type="button" style={styles.secondaryBtn} onClick={() => startEditReport(selectedRow)} disabled={mutatingReport}>
+                      Editar
+                    </button>
+                    <button type="button" style={styles.dangerBtn} onClick={() => void handleDeleteReport(selectedRow)} disabled={mutatingReport}>
+                      Eliminar
+                    </button>
+                  </>
+                )}
+                <button
+                  style={styles.modalCloseBtn}
+                  onClick={() => {
+                    setSelectedRow(null);
+                    setEditingRow(null);
+                  }}
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
 
             {(() => {
@@ -698,6 +871,62 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
             })()}
 
             <div style={styles.modalSectionLabel}>Datos del registro</div>
+            {editingRow && String(editingRow.id ?? '') === String(selectedRow.id ?? '') && (
+              <div style={styles.editPanel}>
+                <div style={styles.editGrid}>
+                  <label style={styles.editField}>
+                    <span style={styles.modalKey}>Fecha</span>
+                    <input type="date" style={styles.input} value={editForm.fecha} onChange={(e) => setEditForm((current) => ({ ...current, fecha: e.target.value }))} />
+                  </label>
+                  <label style={styles.editField}>
+                    <span style={styles.modalKey}>Area</span>
+                    <select style={styles.input} value={editForm.area} onChange={(e) => setEditForm((current) => ({ ...current, area: e.target.value }))}>
+                      <option value="impresion">IMPRESION</option>
+                      <option value="diseno">DISENO</option>
+                      <option value="sublimacion">SUBLIMACION</option>
+                      <option value="administracion">ADMINISTRACION</option>
+                    </select>
+                  </label>
+                  <label style={{ ...styles.editField, gridColumn: '1 / -1' }}>
+                    <span style={styles.modalKey}>Pedido</span>
+                    <input style={styles.input} value={editForm.nombrePedido} onChange={(e) => setEditForm((current) => ({ ...current, nombrePedido: e.target.value }))} />
+                  </label>
+                  <label style={styles.editField}>
+                    <span style={styles.modalKey}>Cantidad</span>
+                    <input style={styles.input} value={editForm.cantidadDanada} onChange={(e) => setEditForm((current) => ({ ...current, cantidadDanada: e.target.value }))} />
+                  </label>
+                  <label style={styles.editField}>
+                    <span style={styles.modalKey}>Persona</span>
+                    <input style={styles.input} value={editForm.personaDano} onChange={(e) => setEditForm((current) => ({ ...current, personaDano: e.target.value }))} />
+                  </label>
+                  <label style={styles.editField}>
+                    <span style={styles.modalKey}>Tipo trabajo</span>
+                    <input style={styles.input} value={editForm.tipoTrabajo} onChange={(e) => setEditForm((current) => ({ ...current, tipoTrabajo: e.target.value }))} />
+                  </label>
+                  <label style={styles.editField}>
+                    <span style={styles.modalKey}>Tipo dano</span>
+                    <input style={styles.input} value={editForm.tipoDano} onChange={(e) => setEditForm((current) => ({ ...current, tipoDano: e.target.value }))} />
+                  </label>
+                  <label style={{ ...styles.editField, gridColumn: '1 / -1' }}>
+                    <span style={styles.modalKey}>Motivo</span>
+                    <input style={styles.input} value={editForm.motivoDano} onChange={(e) => setEditForm((current) => ({ ...current, motivoDano: e.target.value }))} />
+                  </label>
+                  <label style={{ ...styles.editField, gridColumn: '1 / -1' }}>
+                    <span style={styles.modalKey}>Observacion</span>
+                    <textarea style={styles.textarea} value={editForm.observacion} onChange={(e) => setEditForm((current) => ({ ...current, observacion: e.target.value }))} />
+                  </label>
+                </div>
+                <div style={styles.editActions}>
+                  <button type="button" style={styles.primaryBtn} onClick={() => void handleSaveReport()} disabled={mutatingReport}>
+                    {mutatingReport ? 'Guardando...' : 'Guardar cambios'}
+                  </button>
+                  <button type="button" style={styles.secondaryBtn} onClick={() => setEditingRow(null)} disabled={mutatingReport}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+            {!(editingRow && String(editingRow.id ?? '') === String(selectedRow.id ?? '')) && (
             <div style={styles.modalGrid}>
               <div style={styles.modalItem}>
                 <div style={styles.modalKey}>Área</div>
@@ -712,6 +941,7 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
                 </div>
                 ))}
             </div>
+            )}
           </div>
         </div>
       )}
@@ -771,12 +1001,16 @@ const styles: Record<string, React.CSSProperties> = {
   filterInput: { minWidth: 180 },
   primaryBtn: { padding: '10px 14px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, cursor: 'pointer' },
   secondaryBtn: { padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 600, cursor: 'pointer' },
+  dangerBtn: { padding: '10px 14px', borderRadius: 8, border: '1px solid #fecaca', background: '#fee2e2', color: '#991b1b', fontWeight: 700, cursor: 'pointer' },
   filterBtn: { whiteSpace: 'nowrap' },
   info: { marginTop: 10, color: '#1e3a8a', background: '#dbeafe', padding: '8px 10px', borderRadius: 8 },
   success: { marginTop: 10, color: '#166534', background: '#dcfce7', padding: '8px 10px', borderRadius: 8 },
   error: { marginTop: 10, color: '#b91c1c', background: '#fee2e2', padding: '8px 10px', borderRadius: 8 },
   table: { width: '100%', borderCollapse: 'collapse' },
   clickableRow: { cursor: 'pointer' },
+  rowActions: { display: 'flex', gap: 6, flexWrap: 'wrap' },
+  inlineBtn: { padding: '6px 9px', borderRadius: 7, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, cursor: 'pointer', fontSize: 12 },
+  inlineDangerBtn: { padding: '6px 9px', borderRadius: 7, border: '1px solid #fecaca', background: '#fff1f2', color: '#be123c', fontWeight: 700, cursor: 'pointer', fontSize: 12 },
   th: { textAlign: 'left', fontSize: 12, color: '#6b7280', borderBottom: '1px solid #e5e7eb', padding: '8px 6px' },
   td: { fontSize: 13, color: '#1f2937', borderBottom: '1px solid #f3f4f6', padding: '8px 6px' },
   modalBackdrop: {
@@ -806,6 +1040,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
     marginBottom: 12,
   },
+  modalActions: { display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' },
   modalTitle: { margin: 0, color: '#0f172a', fontSize: 18 },
   modalSubtitle: { margin: '6px 0 0 0', fontSize: 13, color: '#64748b' },
   modalCloseBtn: {
@@ -830,6 +1065,25 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
     gap: 10,
+  },
+  editPanel: {
+    border: '1px solid #bfdbfe',
+    borderRadius: 12,
+    background: '#f8fbff',
+    padding: 12,
+    marginBottom: 12,
+  },
+  editGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 },
+  editField: { display: 'flex', flexDirection: 'column', gap: 5 },
+  editActions: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12, flexWrap: 'wrap' },
+  textarea: {
+    padding: '10px 12px',
+    border: '1px solid #d1d5db',
+    borderRadius: 8,
+    fontSize: 14,
+    background: '#fff',
+    minHeight: 90,
+    resize: 'vertical',
   },
   trelloInfoBox: {
     border: '1px solid #93c5fd',
