@@ -126,6 +126,7 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [success, setSuccess] = React.useState<string | null>(null);
   const [rows, setRows] = React.useState<AnyRow[]>([]);
 
   const [nombrePedido, setNombrePedido] = React.useState('');
@@ -402,6 +403,7 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
   async function handleCreate(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
 
     const qty = 1;
     if (!nombrePedido.trim() || !personaDano.trim() || !motivoDano.trim()) {
@@ -485,13 +487,12 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
     setSelectedCardId('');
     setSaving(false);
     
-    // Show success message instead of reloading (to avoid RLS recursion)
-    setError(
+    setSuccess(
       savedWithoutTrelloDescription
-        ? 'Registro guardado, pero sin descripcion de Trello porque falta la columna trello_card_desc en Supabase. Ejecuta la migracion 20240101000009_add_trello_card_desc_to_pedidos.sql.'
+        ? 'Registro guardado. La descripción de Trello no se guardó porque falta la columna trello_card_desc en Supabase.'
         : 'Registro guardado correctamente',
     );
-    setTimeout(() => setError(null), 3000);
+    setTimeout(() => setSuccess(null), 3000);
   }
 
   return (
@@ -847,6 +848,7 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
             <button type="submit" style={styles.primaryBtn} disabled={saving}>{saving ? 'Guardando...' : 'Guardar registro'}</button>
           </div>
         </form>
+        {success && <p style={styles.success}>{success}</p>}
         {error && <p style={styles.error}>{error}</p>}
       </div>
 
@@ -1092,6 +1094,7 @@ const styles: Record<string, React.CSSProperties> = {
   formActions: { display: 'flex', justifyContent: 'flex-end', paddingTop: 4 },
   primaryBtn: { padding: '11px 14px', borderRadius: 9, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer' },
   secondaryBtn: { padding: '11px 14px', borderRadius: 9, border: '1px solid #93c5fd', background: '#fff', color: '#1e40af', fontWeight: 700, cursor: 'pointer' },
+  success: { marginTop: 10, color: '#166534', background: '#dcfce7', padding: '8px 10px', borderRadius: 8 },
   error: { marginTop: 10, color: '#b91c1c', background: '#fee2e2', padding: '8px 10px', borderRadius: 8 },
   table: { width: '100%', borderCollapse: 'collapse' },
   th: { textAlign: 'left', fontSize: 12, color: '#6b7280', borderBottom: '1px solid #e5e7eb', padding: '8px 6px' },

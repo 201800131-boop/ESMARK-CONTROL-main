@@ -198,6 +198,7 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
   const [rows, setRows] = React.useState<AnyRow[]>([]);
   const [closureRows, setClosureRows] = React.useState<AnyRow[]>([]);
   const [success, setSuccess] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
   const [areaIdByCode, setAreaIdByCode] = React.useState<Record<string, string>>({});
   const [areaNameById, setAreaNameById] = React.useState<Record<string, string>>({});
   const [userAreaId, setUserAreaId] = React.useState<string | null>(null);
@@ -344,7 +345,9 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
       });
       setRows(filtered);
       if (missingTrelloDescColumn) {
-        setError('La descripcion de Trello no aparece porque falta la columna trello_card_desc en Supabase. Ejecuta la migracion 20240101000009_add_trello_card_desc_to_pedidos.sql.');
+        setNotice('La descripción de Trello no aparece porque falta la columna trello_card_desc en Supabase.');
+      } else {
+        setNotice(null);
       }
     } else {
       setError(qErr.message);
@@ -407,7 +410,11 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
           void loadClosures();
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          setNotice('La actualización en tiempo real no pudo conectarse. Puedes usar Filtrar para refrescar manualmente.');
+        }
+      });
 
     return () => {
       void supabase.removeChannel(channel);
@@ -680,15 +687,37 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
 
     setMutatingReport(true);
     setError(null);
-    const { error: deleteError } = await supabase
+    setSuccess(null);
+    const { data: deletedRows, error: deleteError } = await supabase
       .from('pedidos_danados')
       .delete()
-      .eq('id', recordId);
+      .eq('id', recordId)
+      .select('id');
 
     if (deleteError) {
       setError(deleteError.message);
       setMutatingReport(false);
       return;
+    }
+
+    if (!deletedRows || deletedRows.length === 0) {
+      setError('Supabase no eliminó el registro. Revisa permisos de administrador o políticas RLS.');
+      setMutatingReport(false);
+      return;
+    }
+
+    if (!deleteError) {
+      const { data: existsAfterDelete } = await supabase
+        .from('pedidos_danados')
+        .select('id')
+        .eq('id', recordId)
+        .maybeSingle();
+
+      if (existsAfterDelete) {
+        setError('Supabase no eliminó el registro. Revisa permisos de administrador o políticas RLS.');
+        setMutatingReport(false);
+        return;
+      }
     }
 
     setRows((current) => current.filter((currentRow) => String(currentRow.id ?? '') !== recordId));
@@ -752,6 +781,7 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
           </p>
         )}
         {success && <p style={styles.success}>{success}</p>}
+        {notice && <p style={styles.info}>{notice}</p>}
         {error && <p style={styles.error}>{error}</p>}
       </div>
 
