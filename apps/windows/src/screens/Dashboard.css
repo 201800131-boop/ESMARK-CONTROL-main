@@ -509,6 +509,16 @@ body,
   letter-spacing: 0.4px;
 }
 
+.dashboard-stat-icon svg {
+  width: 21px;
+  height: 21px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
 .border-red .dashboard-stat-icon {
   background: #dc2626;
 }

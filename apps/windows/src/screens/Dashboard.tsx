@@ -46,10 +46,10 @@ function normalizeAreaCode(area?: string): string {
 
 function formatAreaLabel(area?: string): string {
   const code = normalizeAreaCode(area);
-  if (code === 'impresion') return 'IMPRESION';
-  if (code === 'diseno') return 'DISENO';
-  if (code === 'sublimacion') return 'SUBLIMACION';
-  if (code === 'administracion') return 'ADMINISTRACION';
+  if (code === 'impresion') return 'IMPRESIÓN';
+  if (code === 'diseno') return 'DISEÑO';
+  if (code === 'sublimacion') return 'SUBLIMACIÓN';
+  if (code === 'administracion') return 'ADMINISTRACIÓN';
   return String(area ?? '').toUpperCase();
 }
 
@@ -198,10 +198,10 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
   }, [isAdmin, periodFilter]);
 
   const titleBySection: Record<Section, string> = {
-    dashboard: isAdmin ? 'Panel de Control' : 'Inicio de Area',
-    pedidos: 'Pedidos Danados',
+    dashboard: isAdmin ? 'Panel de Control' : 'Inicio de Área',
+    pedidos: 'Pedidos Dañados',
     reportes: 'Reportes',
-    usuarios: 'Gestion de Usuarios',
+    usuarios: 'Gestión de Usuarios',
   };
 
   async function handleSignOut(): Promise<void> {
@@ -231,11 +231,11 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
             }}
           />
           <span className="dashboard-logo-text">ESMARK</span>
-          <span className="dashboard-logo-sub">{isAdmin ? 'Control' : 'Area'}</span>
+          <span className="dashboard-logo-sub">{isAdmin ? 'Control' : 'Área'}</span>
         </div>
         <nav className="dashboard-nav">
           <NavItem icon={<GaugeIcon />} label={isAdmin ? 'Panel de control' : 'Inicio'} active={section === 'dashboard'} onClick={() => setSection('dashboard')} />
-          <NavItem icon={<AlertFileIcon />} label="Pedidos Danados" active={section === 'pedidos'} onClick={() => setSection('pedidos')} />
+          <NavItem icon={<AlertFileIcon />} label="Pedidos Dañados" active={section === 'pedidos'} onClick={() => setSection('pedidos')} />
           <NavItem icon={<ReportIcon />} label="Reportes" active={section === 'reportes'} onClick={() => setSection('reportes')} />
           {isAdmin && <NavItem icon={<UsersIcon />} label="Usuarios" active={section === 'usuarios'} onClick={() => setSection('usuarios')} />}
         </nav>
@@ -244,18 +244,18 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
           onClick={() => void handleSignOut()}
           disabled={signingOut}
         >
-          {signingOut ? 'Saliendo...' : 'Cerrar sesion'}
+          {signingOut ? 'Saliendo...' : 'Cerrar sesión'}
         </button>
       </aside>
 
       <main className="dashboard-main">
         <header className="dashboard-header">
           <div>
-            <span className="dashboard-header-kicker">{isAdmin ? 'Administracion' : formatAreaLabel(areaScope)}</span>
+            <span className="dashboard-header-kicker">{isAdmin ? 'Administración' : formatAreaLabel(areaScope)}</span>
             <h1 className="dashboard-header-title">{titleBySection[section]}</h1>
           </div>
           <span className="dashboard-user-badge">
-            {displayName} · {isAdmin ? 'Administrador' : `Area ${formatAreaLabel(areaScope)}`}
+            {displayName} · {isAdmin ? 'Administrador' : `Área ${formatAreaLabel(areaScope)}`}
           </span>
         </header>
 
@@ -263,10 +263,10 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
           <>
             <section className="dashboard-admin-hero">
               <div className="dashboard-admin-hero-copy">
-                <span className="dashboard-admin-kicker">Operacion en tiempo real</span>
+                <span className="dashboard-admin-kicker">Operación en tiempo real</span>
                 <h2 className="dashboard-admin-title">Resumen ejecutivo de incidencias</h2>
                 <p className="dashboard-admin-subtitle">
-                  Controla pedidos danados, cierres y actividad por area desde una vista compacta y lista para decisiones.
+                  Controla pedidos dañados, cierres y actividad por área desde una vista compacta y lista para decisiones.
                 </p>
               </div>
               <div className="dashboard-admin-hero-side">
@@ -300,31 +300,31 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
                   Ver reportes
                 </button>
                 <button type="button" className="dashboard-primary-action" onClick={() => setSection('pedidos')}>
-                  Registrar dano
+                  Registrar daño
                 </button>
               </div>
             </div>
 
             <div className="dashboard-stats-grid">
-              <StatCard title="Pedidos danados" value={loadingAdminStats ? '...' : String(adminStats.totalPedidos)} tone="red" icon="PD" detail="Incidencias registradas" />
-              <StatCard title="Reportes generados" value={loadingAdminStats ? '...' : String(adminStats.totalReportes)} tone="blue" icon="RG" detail="Cierres guardados" />
-              <StatCard title="Areas activas" value={loadingAdminStats ? '...' : String(adminStats.areasActivas)} tone="green" icon="AA" detail="Con movimiento" />
-              <StatCard title="Pendientes" value={loadingAdminStats ? '...' : String(adminStats.pendientes)} tone="orange" icon="PE" detail="Sin cierre asociado" />
+              <StatCard title="Pedidos dañados" value={loadingAdminStats ? '...' : String(adminStats.totalPedidos)} tone="red" icon={<DamageIcon />} detail="Incidencias registradas" />
+              <StatCard title="Reportes generados" value={loadingAdminStats ? '...' : String(adminStats.totalReportes)} tone="blue" icon={<ReportIcon />} detail="Cierres guardados" />
+              <StatCard title="Áreas activas" value={loadingAdminStats ? '...' : String(adminStats.areasActivas)} tone="green" icon={<AreasIcon />} detail="Con movimiento" />
+              <StatCard title="Pendientes" value={loadingAdminStats ? '...' : String(adminStats.pendientes)} tone="orange" icon={<PendingIcon />} detail="Sin cierre asociado" />
             </div>
 
             <div className="dashboard-admin-grid">
               <section className="dashboard-area-stats-section">
                 <div className="dashboard-section-heading">
                   <div>
-                    <h3 className="dashboard-area-stats-title">Actividad por area</h3>
+                    <h3 className="dashboard-area-stats-title">Actividad por área</h3>
                     <p className="dashboard-section-subtitle">Comparativo de pedidos y cierres del periodo.</p>
                   </div>
-                  <span className="dashboard-section-count">{areaStatsRows.length} areas</span>
+                  <span className="dashboard-section-count">{areaStatsRows.length} áreas</span>
                 </div>
                 <table className="dashboard-area-stats-table">
                   <thead>
                     <tr>
-                      <th className="dashboard-area-stats-th">Area</th>
+                      <th className="dashboard-area-stats-th">Área</th>
                       <th className="dashboard-area-stats-th">Pedidos</th>
                       <th className="dashboard-area-stats-th">Cierres</th>
                       <th className="dashboard-area-stats-th">Avance</th>
@@ -353,7 +353,7 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
                     })}
                     {areaStatsRows.length === 0 && (
                       <tr>
-                        <td className="dashboard-area-stats-td" colSpan={4}>Sin actividad registrada por area.</td>
+                        <td className="dashboard-area-stats-td" colSpan={4}>Sin actividad registrada por área.</td>
                       </tr>
                     )}
                   </tbody>
@@ -364,7 +364,7 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
                 <div className="dashboard-section-heading">
                   <div>
                     <h3 className="dashboard-area-stats-title">Accesos de control</h3>
-                    <p className="dashboard-section-subtitle">Operaciones frecuentes de administracion.</p>
+                    <p className="dashboard-section-subtitle">Operaciones frecuentes de administración.</p>
                   </div>
                 </div>
                 <ControlLink
@@ -440,18 +440,48 @@ function StatCard({
   title: string;
   value: string;
   tone: 'red' | 'blue' | 'green' | 'orange';
-  icon: string;
+  icon: React.ReactNode;
   detail?: string;
 }): React.JSX.Element {
   return (
     <div className={`dashboard-stat-card border-${tone}`}>
       <div className="dashboard-stat-topline">
-        <span className="dashboard-stat-icon">{icon}</span>
+        <span className="dashboard-stat-icon" aria-hidden="true">{icon}</span>
         <span className="dashboard-stat-value">{value}</span>
       </div>
       <span className="dashboard-stat-label">{title}</span>
       {detail && <span className="dashboard-stat-detail">{detail}</span>}
     </div>
+  );
+}
+
+function DamageIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false">
+      <path d="M12 3 3 20h18L12 3Z" />
+      <path d="M12 9v5" />
+      <path d="M12 17h.01" />
+    </svg>
+  );
+}
+
+function AreasIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false">
+      <path d="M4 4h7v7H4V4Z" />
+      <path d="M13 4h7v7h-7V4Z" />
+      <path d="M4 13h7v7H4v-7Z" />
+      <path d="M13 13h7v7h-7v-7Z" />
+    </svg>
+  );
+}
+
+function PendingIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false">
+      <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
+      <path d="M12 7v5l3 2" />
+    </svg>
   );
 }
 
@@ -549,7 +579,7 @@ function AreaHome({
     <section className="dashboard-area-hero">
       <div className="dashboard-area-hero-top">
         <div>
-          <div className="dashboard-area-kicker">Inicio de Area</div>
+          <div className="dashboard-area-kicker">Inicio de Área</div>
           <h2 className="dashboard-area-title">Centro de trabajo para {formatAreaLabel(areaScope)}</h2>
           <p className="dashboard-area-subtitle">
             Registro rapido, reportes claros y seguimiento de incidencias desde una sola vista.
@@ -560,7 +590,7 @@ function AreaHome({
 
       <div className="dashboard-area-actions">
         <button type="button" className="dashboard-area-primary-action" onClick={onRegisterDamage}>
-          Registrar dano
+          Registrar daño
         </button>
         <button type="button" className="dashboard-area-secondary-action" onClick={onOpenReports}>
           Ver reportes
@@ -570,7 +600,7 @@ function AreaHome({
       <div className="dashboard-area-clean-panel">
         <div className="dashboard-area-clean-item">
           <strong className="dashboard-area-clean-label">Enfoque</strong>
-          <span className="dashboard-area-clean-text">Capturar danos de forma ordenada y verificable.</span>
+          <span className="dashboard-area-clean-text">Capturar daños de forma ordenada y verificable.</span>
         </div>
         <div className="dashboard-area-clean-divider" />
         <div className="dashboard-area-clean-item">
