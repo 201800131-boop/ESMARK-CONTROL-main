@@ -110,6 +110,16 @@ body,
   flex: 0 0 auto;
 }
 
+.dashboard-nav-icon svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
 .dashboard-nav-item-active .dashboard-nav-icon {
   background: rgba(255, 255, 255, 0.2);
   color: #fff;

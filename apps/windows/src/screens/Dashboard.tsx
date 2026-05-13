@@ -234,10 +234,10 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
           <span className="dashboard-logo-sub">{isAdmin ? 'Control' : 'Area'}</span>
         </div>
         <nav className="dashboard-nav">
-          <NavItem icon="D" label={isAdmin ? 'Dashboard' : 'Inicio'} active={section === 'dashboard'} onClick={() => setSection('dashboard')} />
-          <NavItem icon="P" label="Pedidos Danados" active={section === 'pedidos'} onClick={() => setSection('pedidos')} />
-          <NavItem icon="R" label="Reportes" active={section === 'reportes'} onClick={() => setSection('reportes')} />
-          {isAdmin && <NavItem icon="U" label="Usuarios" active={section === 'usuarios'} onClick={() => setSection('usuarios')} />}
+          <NavItem icon={<GaugeIcon />} label={isAdmin ? 'Panel de control' : 'Inicio'} active={section === 'dashboard'} onClick={() => setSection('dashboard')} />
+          <NavItem icon={<AlertFileIcon />} label="Pedidos Danados" active={section === 'pedidos'} onClick={() => setSection('pedidos')} />
+          <NavItem icon={<ReportIcon />} label="Reportes" active={section === 'reportes'} onClick={() => setSection('reportes')} />
+          {isAdmin && <NavItem icon={<UsersIcon />} label="Usuarios" active={section === 'usuarios'} onClick={() => setSection('usuarios')} />}
         </nav>
         <button
           className={`dashboard-signout-btn${signingOut ? ' dashboard-signout-btn-disabled' : ''}`}
@@ -417,7 +417,7 @@ function NavItem({
   active,
   onClick,
 }: {
-  icon: string;
+  icon: React.ReactNode;
   label: string;
   active?: boolean;
   onClick: () => void;
@@ -484,6 +484,30 @@ function UsersIcon(): React.JSX.Element {
       <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
       <path d="M20 18c0-1.7-1-3.1-2.5-3.7" />
       <path d="M17 5.1a3 3 0 0 1 0 5.8" />
+    </svg>
+  );
+}
+
+function GaugeIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false">
+      <path d="M4 14a8 8 0 0 1 16 0" />
+      <path d="M12 14l4-4" />
+      <path d="M8 18h8" />
+      <path d="M6.4 11.5l1.4.8" />
+      <path d="M17.6 11.5l-1.4.8" />
+      <path d="M12 6v2" />
+    </svg>
+  );
+}
+
+function AlertFileIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false">
+      <path d="M7 3h7l4 4v14H7V3Z" />
+      <path d="M14 3v5h5" />
+      <path d="M12 11v4" />
+      <path d="M12 18h.01" />
     </svg>
   );
 }
