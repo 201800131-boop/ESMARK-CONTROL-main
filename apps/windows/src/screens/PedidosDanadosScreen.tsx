@@ -130,9 +130,7 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
 
   const [nombrePedido, setNombrePedido] = React.useState('');
   const [tipoTrabajo, setTipoTrabajo] = React.useState('');
-  const [tipoDano, setTipoDano] = React.useState('');
   const [personaDano, setPersonaDano] = React.useState('');
-  const [cantidadDanada, setCantidadDanada] = React.useState('1');
   const [motivoDano, setMotivoDano] = React.useState('');
   const [observacion, setObservacion] = React.useState('');
 
@@ -301,7 +299,7 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
       // Try direct query without RLS by using low-level select
       const { data, error: qErr } = await supabase
         .from('pedidos_danados')
-        .select('id, fecha_registro, nombre_pedido, motivo_dano, cantidad_danada, tipo_trabajo, tipo_dano, persona_dano')
+        .select('id')
         .order('fecha_registro', { ascending: false })
         .limit(100);
 
@@ -405,9 +403,9 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
     e.preventDefault();
     setError(null);
 
-    const qty = Number(cantidadDanada);
-    if (!nombrePedido.trim() || !personaDano.trim() || !motivoDano.trim() || !Number.isFinite(qty) || qty <= 0) {
-      setError('Completa los campos obligatorios: nombre del pedido, persona que causó el daño, motivo y cantidad válida (> 0).');
+    const qty = 1;
+    if (!nombrePedido.trim() || !personaDano.trim() || !motivoDano.trim()) {
+      setError('Completa los campos obligatorios: nombre del pedido, persona que causó el daño y motivo.');
       return;
     }
 
@@ -453,7 +451,6 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
         cantidad_danada: qty,
         motivo_dano: motivoDano.trim(),
         tipo_trabajo: tipoTrabajo.trim() || undefined,
-        tipo_dano: tipoDano.trim() || undefined,
         persona_dano: personaDano.trim() || undefined,
         observacion: observacion.trim() || undefined,
         trello_card_id: selectedCard?.id || undefined,
@@ -482,9 +479,7 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
 
     setNombrePedido('');
     setTipoTrabajo('');
-    setTipoDano('');
     setPersonaDano('');
-    setCantidadDanada('1');
     setMotivoDano('');
     setObservacion('');
     setSelectedCardId('');
@@ -765,9 +760,7 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
             <div style={styles.gridForm}>
               <input style={{ ...styles.input, ...styles.span2 }} placeholder="Nombre del pedido *" value={nombrePedido} onChange={(e) => setNombrePedido(e.target.value)} />
               <input style={styles.input} placeholder="Tipo de trabajo" value={tipoTrabajo} onChange={(e) => setTipoTrabajo(e.target.value)} />
-              <input style={styles.input} placeholder="Tipo de daño" value={tipoDano} onChange={(e) => setTipoDano(e.target.value)} />
               <input style={styles.input} placeholder="Persona que causó el daño *" value={personaDano} onChange={(e) => setPersonaDano(e.target.value)} required />
-              <input style={styles.input} placeholder="Cantidad dañada *" value={cantidadDanada} onChange={(e) => setCantidadDanada(e.target.value)} />
             </div>
 
             {selectedCard && (
