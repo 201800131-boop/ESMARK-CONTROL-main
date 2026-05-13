@@ -9,6 +9,7 @@ node_modules/
 dist/
 build/
 *.js.map
+apps/windows/release/
 
 # Environment
 .env
