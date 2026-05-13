@@ -367,21 +367,27 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
                     <p className="dashboard-section-subtitle">Operaciones frecuentes de administracion.</p>
                   </div>
                 </div>
-                <button type="button" className="dashboard-control-link control-users" onClick={() => setSection('usuarios')}>
-                  <span className="dashboard-control-icon">U</span>
-                  <span>Usuarios</span>
-                  <strong>Gestionar accesos</strong>
-                </button>
-                <button type="button" className="dashboard-control-link control-reports" onClick={() => setSection('reportes')}>
-                  <span className="dashboard-control-icon">R</span>
-                  <span>Reportes</span>
-                  <strong>Editar o eliminar registros</strong>
-                </button>
-                <button type="button" className="dashboard-control-link control-trello" onClick={() => setSection('pedidos')}>
-                  <span className="dashboard-control-icon">T</span>
-                  <span>Trello</span>
-                  <strong>Vincular tarjetas</strong>
-                </button>
+                <ControlLink
+                  tone="users"
+                  icon={<UsersIcon />}
+                  label="Usuarios"
+                  title="Gestionar accesos"
+                  onClick={() => setSection('usuarios')}
+                />
+                <ControlLink
+                  tone="reports"
+                  icon={<ReportIcon />}
+                  label="Reportes"
+                  title="Editar o eliminar registros"
+                  onClick={() => setSection('reportes')}
+                />
+                <ControlLink
+                  tone="trello"
+                  icon={<BoardIcon />}
+                  label="Trello"
+                  title="Vincular tarjetas"
+                  onClick={() => setSection('pedidos')}
+                />
               </aside>
             </div>
           </>
@@ -446,6 +452,63 @@ function StatCard({
       <span className="dashboard-stat-label">{title}</span>
       {detail && <span className="dashboard-stat-detail">{detail}</span>}
     </div>
+  );
+}
+
+function ControlLink({
+  tone,
+  icon,
+  label,
+  title,
+  onClick,
+}: {
+  tone: 'users' | 'reports' | 'trello';
+  icon: React.ReactNode;
+  label: string;
+  title: string;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <button type="button" className={`dashboard-control-link control-${tone}`} onClick={onClick}>
+      <span className="dashboard-control-icon" aria-hidden="true">{icon}</span>
+      <span>{label}</span>
+      <strong>{title}</strong>
+    </button>
+  );
+}
+
+function UsersIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false">
+      <path d="M16 19c0-2.2-1.8-4-4-4s-4 1.8-4 4" />
+      <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+      <path d="M20 18c0-1.7-1-3.1-2.5-3.7" />
+      <path d="M17 5.1a3 3 0 0 1 0 5.8" />
+    </svg>
+  );
+}
+
+function ReportIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false">
+      <path d="M7 3h7l4 4v14H7V3Z" />
+      <path d="M14 3v5h5" />
+      <path d="M10 13h6" />
+      <path d="M10 17h4" />
+    </svg>
+  );
+}
+
+function BoardIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false">
+      <path d="M4 5h16v14H4V5Z" />
+      <path d="M9 5v14" />
+      <path d="M15 5v14" />
+      <path d="M6 8h1" />
+      <path d="M11 8h2" />
+      <path d="M17 8h1" />
+    </svg>
   );
 }
 

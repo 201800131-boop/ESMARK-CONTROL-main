@@ -684,6 +684,16 @@ body,
   font-weight: 900;
 }
 
+.dashboard-control-icon svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
 .control-users .dashboard-control-icon {
   background: #7c3aed;
 }
