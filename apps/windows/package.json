@@ -32,6 +32,7 @@
   "build": {
     "appId": "com.esmark.control",
     "productName": "ESMARK Control",
+    "icon": "public/esmark-logo.png",
     "directories": {
       "output": "release"
     },

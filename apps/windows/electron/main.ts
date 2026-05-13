@@ -4,6 +4,12 @@ import { autoUpdater } from 'electron-updater';
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
+function getAppIconPath(): string {
+  return app.isPackaged
+    ? path.join(__dirname, '../dist/esmark-logo.png')
+    : path.join(process.cwd(), 'public', 'esmark-logo.png');
+}
+
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
@@ -11,6 +17,7 @@ function createWindow(): BrowserWindow {
     minWidth: 900,
     minHeight: 600,
     title: 'ESMARK Control',
+    icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
