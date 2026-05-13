@@ -60,6 +60,15 @@ function getPeriodLabel(period: PeriodFilter): string {
   return 'Todo';
 }
 
+function getAreaInitial(area?: string): string {
+  const code = normalizeAreaCode(area);
+  if (code === 'impresion') return 'I';
+  if (code === 'diseno') return 'D';
+  if (code === 'sublimacion') return 'S';
+  if (code === 'administracion') return 'A';
+  return String(area ?? 'N').trim().charAt(0).toUpperCase() || 'N';
+}
+
 export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Element {
   const [section, setSection] = React.useState<Section>(() => {
     const stored = window.localStorage.getItem(DASHBOARD_SECTION_KEY);
@@ -225,10 +234,10 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
           <span className="dashboard-logo-sub">{isAdmin ? 'Control' : 'Area'}</span>
         </div>
         <nav className="dashboard-nav">
-          <NavItem label={isAdmin ? 'Dashboard' : 'Inicio'} active={section === 'dashboard'} onClick={() => setSection('dashboard')} />
-          <NavItem label="Pedidos Danados" active={section === 'pedidos'} onClick={() => setSection('pedidos')} />
-          <NavItem label="Reportes" active={section === 'reportes'} onClick={() => setSection('reportes')} />
-          {isAdmin && <NavItem label="Usuarios" active={section === 'usuarios'} onClick={() => setSection('usuarios')} />}
+          <NavItem icon="D" label={isAdmin ? 'Dashboard' : 'Inicio'} active={section === 'dashboard'} onClick={() => setSection('dashboard')} />
+          <NavItem icon="P" label="Pedidos Danados" active={section === 'pedidos'} onClick={() => setSection('pedidos')} />
+          <NavItem icon="R" label="Reportes" active={section === 'reportes'} onClick={() => setSection('reportes')} />
+          {isAdmin && <NavItem icon="U" label="Usuarios" active={section === 'usuarios'} onClick={() => setSection('usuarios')} />}
         </nav>
         <button
           className={`dashboard-signout-btn${signingOut ? ' dashboard-signout-btn-disabled' : ''}`}
@@ -261,10 +270,13 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
                 </p>
               </div>
               <div className="dashboard-admin-hero-side">
-                <span className="dashboard-admin-side-label">Cobertura de cierre</span>
-                <strong className="dashboard-admin-side-value">{loadingAdminStats ? '...' : `${completionRate}%`}</strong>
-                <div className="dashboard-progress-track">
-                  <div className="dashboard-progress-fill" style={{ width: `${completionRate}%` }} />
+                <div className="dashboard-admin-ring" style={{ '--ring-progress': `${completionRate}%` } as React.CSSProperties}>
+                  <span>{loadingAdminStats ? '...' : `${completionRate}%`}</span>
+                </div>
+                <div>
+                  <span className="dashboard-admin-side-label">Cobertura de cierre</span>
+                  <strong className="dashboard-admin-side-value">{adminStats.totalReportes}/{adminStats.totalPedidos}</strong>
+                  <p className="dashboard-admin-side-copy">Reportes generados contra pedidos del periodo.</p>
                 </div>
               </div>
             </section>
@@ -294,10 +306,10 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
             </div>
 
             <div className="dashboard-stats-grid">
-              <StatCard title="Pedidos danados" value={loadingAdminStats ? '...' : String(adminStats.totalPedidos)} tone="red" detail="Incidencias registradas" />
-              <StatCard title="Reportes generados" value={loadingAdminStats ? '...' : String(adminStats.totalReportes)} tone="blue" detail="Cierres guardados" />
-              <StatCard title="Areas activas" value={loadingAdminStats ? '...' : String(adminStats.areasActivas)} tone="green" detail="Con movimiento" />
-              <StatCard title="Pendientes" value={loadingAdminStats ? '...' : String(adminStats.pendientes)} tone="orange" detail="Sin cierre asociado" />
+              <StatCard title="Pedidos danados" value={loadingAdminStats ? '...' : String(adminStats.totalPedidos)} tone="red" icon="PD" detail="Incidencias registradas" />
+              <StatCard title="Reportes generados" value={loadingAdminStats ? '...' : String(adminStats.totalReportes)} tone="blue" icon="RG" detail="Cierres guardados" />
+              <StatCard title="Areas activas" value={loadingAdminStats ? '...' : String(adminStats.areasActivas)} tone="green" icon="AA" detail="Con movimiento" />
+              <StatCard title="Pendientes" value={loadingAdminStats ? '...' : String(adminStats.pendientes)} tone="orange" icon="PE" detail="Sin cierre asociado" />
             </div>
 
             <div className="dashboard-admin-grid">
@@ -323,7 +335,12 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
                       const rowRate = row.pedidos > 0 ? Math.min(100, Math.round((row.cierres / row.pedidos) * 100)) : 0;
                       return (
                         <tr key={row.areaCode}>
-                          <td className="dashboard-area-stats-td">{formatAreaLabel(row.areaName)}</td>
+                          <td className="dashboard-area-stats-td">
+                            <span className={`dashboard-area-chip area-${normalizeAreaCode(row.areaCode)}`}>
+                              <span className="dashboard-area-chip-mark">{getAreaInitial(row.areaCode)}</span>
+                              {formatAreaLabel(row.areaName)}
+                            </span>
+                          </td>
                           <td className="dashboard-area-stats-td dashboard-number-cell">{row.pedidos}</td>
                           <td className="dashboard-area-stats-td dashboard-number-cell">{row.cierres}</td>
                           <td className="dashboard-area-stats-td">
@@ -350,15 +367,18 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
                     <p className="dashboard-section-subtitle">Operaciones frecuentes de administracion.</p>
                   </div>
                 </div>
-                <button type="button" className="dashboard-control-link" onClick={() => setSection('usuarios')}>
+                <button type="button" className="dashboard-control-link control-users" onClick={() => setSection('usuarios')}>
+                  <span className="dashboard-control-icon">U</span>
                   <span>Usuarios</span>
                   <strong>Gestionar accesos</strong>
                 </button>
-                <button type="button" className="dashboard-control-link" onClick={() => setSection('reportes')}>
+                <button type="button" className="dashboard-control-link control-reports" onClick={() => setSection('reportes')}>
+                  <span className="dashboard-control-icon">R</span>
                   <span>Reportes</span>
                   <strong>Editar o eliminar registros</strong>
                 </button>
-                <button type="button" className="dashboard-control-link" onClick={() => setSection('pedidos')}>
+                <button type="button" className="dashboard-control-link control-trello" onClick={() => setSection('pedidos')}>
+                  <span className="dashboard-control-icon">T</span>
                   <span>Trello</span>
                   <strong>Vincular tarjetas</strong>
                 </button>
@@ -385,9 +405,20 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
   );
 }
 
-function NavItem({ label, active, onClick }: { label: string; active?: boolean; onClick: () => void }): React.JSX.Element {
+function NavItem({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: string;
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}): React.JSX.Element {
   return (
     <button type="button" className={`dashboard-nav-item${active ? ' dashboard-nav-item-active' : ''}`} onClick={onClick}>
+      <span className="dashboard-nav-icon">{icon}</span>
       {label}
     </button>
   );
@@ -397,16 +428,21 @@ function StatCard({
   title,
   value,
   tone,
+  icon,
   detail,
 }: {
   title: string;
   value: string;
   tone: 'red' | 'blue' | 'green' | 'orange';
+  icon: string;
   detail?: string;
 }): React.JSX.Element {
   return (
     <div className={`dashboard-stat-card border-${tone}`}>
-      <span className="dashboard-stat-value">{value}</span>
+      <div className="dashboard-stat-topline">
+        <span className="dashboard-stat-icon">{icon}</span>
+        <span className="dashboard-stat-value">{value}</span>
+      </div>
       <span className="dashboard-stat-label">{title}</span>
       {detail && <span className="dashboard-stat-detail">{detail}</span>}
     </div>
