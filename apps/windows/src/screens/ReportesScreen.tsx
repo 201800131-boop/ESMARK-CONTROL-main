@@ -21,6 +21,20 @@ interface ReportEditForm {
   observacion: string;
 }
 
+interface AreaReportSection {
+  code: string;
+  label: string;
+  rows: AnyRow[];
+  closures: AnyRow[];
+}
+
+const REPORT_AREA_OPTIONS = [
+  { code: 'impresion', label: 'IMPRESIÓN' },
+  { code: 'diseno', label: 'DISEÑO' },
+  { code: 'sublimacion', label: 'SUBLIMACIÓN' },
+  { code: 'administracion', label: 'ADMINISTRACIÓN' },
+] as const;
+
 function normalizeLookupCard(item: Record<string, unknown>): TrelloLookupCard {
   const descValue = typeof item.desc === 'string'
     ? item.desc
@@ -165,6 +179,17 @@ function extractTrelloShortCode(value: string | null): string | null {
   return null;
 }
 
+function formatDateShort(value: unknown): string {
+  if (!value) return '-';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  return date.toLocaleDateString('es-HN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 export function ReportesScreen({ user }: Props): React.JSX.Element {
   const [loading, setLoading] = React.useState(true);
   const [loadingClosures, setLoadingClosures] = React.useState(true);
@@ -204,6 +229,33 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
   const selectedAreaName = selectedRow
     ? (areaNameById[selectedAreaId] ? areaNameById[selectedAreaId] : (selectedAreaId || '-'))
     : '-';
+  const areaCodeById = React.useMemo(() => {
+    const next: Record<string, string> = {};
+    for (const [code, id] of Object.entries(areaIdByCode)) {
+      next[id] = code;
+    }
+    return next;
+  }, [areaIdByCode]);
+  const areaSections = React.useMemo<AreaReportSection[]>(() => {
+    const sections = REPORT_AREA_OPTIONS
+      .filter((option) => user.role === 'admin' || normalizeAreaCode(user.area ?? '') === option.code)
+      .map((option) => {
+        const areaRows = rows.filter((row) => areaCodeById[String(row.area_id ?? '')] === option.code);
+        const areaClosures = closureRows.filter((row) => normalizeAreaCode(String(row.area ?? '')) === option.code);
+        return {
+          code: option.code,
+          label: option.label,
+          rows: areaRows,
+          closures: areaClosures,
+        };
+      });
+
+    if (user.role === 'admin' && area !== 'all') {
+      return sections.filter((section) => section.code === area);
+    }
+
+    return sections;
+  }, [area, areaCodeById, closureRows, rows, user.area, user.role]);
 
   const hiddenDetailKeys = React.useMemo(
     () => new Set(['id', 'area_id', 'trello_card_id', 'trello_card_url', 'trello_list_id', 'trello_card_name', 'trello_list_name', 'trello_board_id', 'trello_board_name', 'trello_card_desc']),
@@ -493,7 +545,7 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
     };
   }, [selectedRow, trelloCatalog]);
 
-  async function handleGenerateCsv(): Promise<void> {
+  async function handleGenerateCsv(targetArea = area, targetRows = rows): Promise<void> {
     if (!canGenerateExcel) {
       if (user.role !== 'admin') {
         setError('Solo el administrador puede generar Excel de cierre.');
@@ -506,19 +558,20 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
     setGenerating(true);
     setError(null);
 
-    const csvText = toCsv(rows);
+    const csvText = toCsv(targetRows);
 
     const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `cierre_quincenal_${fechaInicio}_${fechaFin}.csv`;
+    const fileArea = targetArea === 'all' ? 'todas_las_areas' : targetArea;
+    a.download = `cierre_${fileArea}_${fechaInicio}_${fechaFin}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
 
-    const reportArea = area === 'all' ? 'all' : area;
+    const reportArea = targetArea === 'all' ? 'all' : targetArea;
     const saveMeta = await supabase.from('reportes_generados').insert({
       area: reportArea,
       generado_por: user.id,
@@ -650,14 +703,23 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
     <div>
       <div style={styles.hero}>
         <div>
-          <h2 style={styles.heroTitle}>Centro de Reportes</h2>
-          <p style={styles.heroText}>Genera CSV por rango de fechas y revisa historial de reportes emitidos.</p>
+          <div style={styles.heroKicker}>Cierres operativos</div>
+          <h2 style={styles.heroTitle}>Centro profesional de reportes por área</h2>
+          <p style={styles.heroText}>Revisa incidencias, divide el trabajo por área y genera cierres separados para administración.</p>
         </div>
-        <div style={styles.heroBadge}>{rows.length} reportes</div>
+        <div style={styles.heroStats}>
+          <span style={styles.heroBadge}>{rows.length} registros</span>
+          <span style={styles.heroBadge}>{areaSections.filter((section) => section.rows.length > 0).length} áreas activas</span>
+        </div>
       </div>
 
       <div style={styles.card}>
-        <h3 style={styles.h3}>Tabla de registros (actualiza al instante)</h3>
+        <div style={styles.cardHeader}>
+          <div>
+            <h3 style={styles.h3}>Filtros de cierre</h3>
+            <p style={styles.cardSubtext}>Selecciona rango y área para preparar la información antes de generar el CSV.</p>
+          </div>
+        </div>
         <div style={styles.filters}>
           <label style={styles.label}>Desde</label>
           <input style={{ ...styles.input, ...styles.filterInput }} type="date" title="Fecha de inicio" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
@@ -743,6 +805,67 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
             </tbody>
           </table>
         )}
+      </div>
+
+      <div style={styles.areaSectionsGrid}>
+        {areaSections.map((section) => {
+          const lastClosure = section.closures[0];
+          const latestRow = section.rows[0];
+          return (
+            <section key={section.code} style={{ ...styles.areaReportCard, ...styles[`areaReportCard_${section.code}`] }}>
+              <div style={styles.areaReportHeader}>
+                <div>
+                  <span style={styles.areaReportKicker}>Sección por área</span>
+                  <h3 style={styles.areaReportTitle}>{section.label}</h3>
+                </div>
+                <span style={styles.areaReportBadge}>{section.rows.length}</span>
+              </div>
+              <div style={styles.areaReportMetrics}>
+                <div style={styles.areaReportMetric}>
+                  <span>Registros</span>
+                  <strong>{section.rows.length}</strong>
+                </div>
+                <div style={styles.areaReportMetric}>
+                  <span>Último pedido</span>
+                  <strong>{formatDateShort(latestRow?.fecha ?? latestRow?.fecha_registro)}</strong>
+                </div>
+                <div style={styles.areaReportMetric}>
+                  <span>Último cierre</span>
+                  <strong>{formatDateShort(lastClosure?.created_at)}</strong>
+                </div>
+              </div>
+              <div style={styles.areaReportPreview}>
+                {section.rows.slice(0, 3).map((row, index) => (
+                  <button
+                    key={`${section.code}-${String(row.id ?? index)}`}
+                    type="button"
+                    style={styles.areaReportItem}
+                    onClick={() => setSelectedRow(row)}
+                  >
+                    <span>{String(row.nombre_pedido ?? 'Pedido sin nombre')}</span>
+                    <strong>{String(row.motivo_dano ?? 'Sin motivo')}</strong>
+                  </button>
+                ))}
+                {section.rows.length === 0 && (
+                  <div style={styles.areaReportEmpty}>Sin registros en el rango seleccionado.</div>
+                )}
+              </div>
+              <div style={styles.areaReportActions}>
+                <button type="button" style={styles.secondaryBtn} onClick={() => setArea(section.code)}>
+                  Ver solo esta área
+                </button>
+                <button
+                  type="button"
+                  style={styles.primaryBtn}
+                  onClick={() => void handleGenerateCsv(section.code, section.rows)}
+                  disabled={generating || !canGenerateExcel || section.rows.length === 0}
+                >
+                  Generar CSV del área
+                </button>
+              </div>
+            </section>
+          );
+        })}
       </div>
 
       {selectedRow && (
@@ -987,13 +1110,18 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
 const styles: Record<string, React.CSSProperties> = {
   hero: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    background: 'linear-gradient(135deg, #14532d 0%, #15803d 100%)',
-    color: '#fff', borderRadius: 14, padding: 18, marginBottom: 14,
+    background: 'linear-gradient(135deg, #0f172a 0%, #1d4ed8 52%, #0891b2 100%)',
+    color: '#fff', borderRadius: 18, padding: 22, marginBottom: 14,
+    boxShadow: '0 18px 42px rgba(15,23,42,.18)',
   },
-  heroTitle: { fontSize: 22, marginBottom: 4 },
+  heroKicker: { fontSize: 12, fontWeight: 900, textTransform: 'uppercase', color: '#bfdbfe', marginBottom: 6 },
+  heroTitle: { fontSize: 28, marginBottom: 6, lineHeight: 1.08 },
   heroText: { color: 'rgba(255,255,255,.86)', fontSize: 13 },
+  heroStats: { display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' },
   heroBadge: { background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.24)', borderRadius: 999, padding: '6px 12px', fontSize: 12, fontWeight: 700 },
-  card: { background: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, boxShadow: '0 4px 18px rgba(15,23,42,.08)' },
+  card: { background: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, boxShadow: '0 10px 28px rgba(15,23,42,.08)', border: '1px solid #e2e8f0' },
+  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 },
+  cardSubtext: { margin: '4px 0 0', color: '#64748b', fontSize: 13 },
   h3: { marginBottom: 12, color: '#111827' },
   filters: { display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
   label: { fontSize: 13, color: '#4b5563', fontWeight: 600 },
@@ -1006,6 +1134,29 @@ const styles: Record<string, React.CSSProperties> = {
   info: { marginTop: 10, color: '#1e3a8a', background: '#dbeafe', padding: '8px 10px', borderRadius: 8 },
   success: { marginTop: 10, color: '#166534', background: '#dcfce7', padding: '8px 10px', borderRadius: 8 },
   error: { marginTop: 10, color: '#b91c1c', background: '#fee2e2', padding: '8px 10px', borderRadius: 8 },
+  areaSectionsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginBottom: 16 },
+  areaReportCard: {
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: 16,
+    padding: 15,
+    boxShadow: '0 10px 28px rgba(15,23,42,.08)',
+    borderTop: '5px solid #2563eb',
+  },
+  areaReportCard_impresion: { borderTopColor: '#2563eb' },
+  areaReportCard_diseno: { borderTopColor: '#7c3aed' },
+  areaReportCard_sublimacion: { borderTopColor: '#16a34a' },
+  areaReportCard_administracion: { borderTopColor: '#f59e0b' },
+  areaReportHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
+  areaReportKicker: { color: '#64748b', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' },
+  areaReportTitle: { margin: '3px 0 0', color: '#0f172a', fontSize: 18 },
+  areaReportBadge: { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: 999, padding: '5px 10px', fontSize: 12, fontWeight: 900 },
+  areaReportMetrics: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: 12 },
+  areaReportMetric: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 9, display: 'flex', flexDirection: 'column', gap: 4 },
+  areaReportPreview: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 },
+  areaReportItem: { border: '1px solid #e2e8f0', background: '#fff', borderRadius: 12, padding: '9px 10px', textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 3 },
+  areaReportEmpty: { border: '1px dashed #cbd5e1', background: '#f8fafc', borderRadius: 12, padding: 12, color: '#64748b', fontSize: 13 },
+  areaReportActions: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'space-between' },
   table: { width: '100%', borderCollapse: 'collapse' },
   clickableRow: { cursor: 'pointer' },
   rowActions: { display: 'flex', gap: 6, flexWrap: 'wrap' },
