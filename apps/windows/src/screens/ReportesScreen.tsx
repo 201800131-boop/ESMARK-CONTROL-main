@@ -852,12 +852,12 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
                 )}
               </div>
               <div style={styles.areaReportActions}>
-                <button type="button" style={styles.secondaryBtn} onClick={() => setArea(section.code)}>
+                <button type="button" style={styles.hidden} onClick={() => setArea(section.code)}>
                   Ver solo esta área
                 </button>
                 <button
                   type="button"
-                  style={styles.primaryBtn}
+                  style={{ ...styles.primaryBtn, ...styles.areaGenerateBtn }}
                   onClick={() => void handleGenerateCsv(section.code, section.rows)}
                   disabled={generating || !canGenerateExcel || section.rows.length === 0}
                 >
@@ -1135,29 +1135,34 @@ const styles: Record<string, React.CSSProperties> = {
   info: { marginTop: 10, color: '#1e3a8a', background: '#dbeafe', padding: '8px 10px', borderRadius: 8 },
   success: { marginTop: 10, color: '#166534', background: '#dcfce7', padding: '8px 10px', borderRadius: 8 },
   error: { marginTop: 10, color: '#b91c1c', background: '#fee2e2', padding: '8px 10px', borderRadius: 8 },
-  areaSectionsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginBottom: 16 },
+  areaSectionsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 16 },
   areaReportCard: {
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: 16,
-    padding: 15,
-    boxShadow: '0 10px 28px rgba(15,23,42,.08)',
-    borderTop: '5px solid #2563eb',
+    background: '#2563eb',
+    border: '1px solid rgba(255,255,255,.28)',
+    borderRadius: 14,
+    padding: 13,
+    boxShadow: '0 10px 24px rgba(15,23,42,.12)',
+    minHeight: 150,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
   },
-  areaReportCard_impresion: { borderTopColor: '#2563eb' },
-  areaReportCard_diseno: { borderTopColor: '#7c3aed' },
-  areaReportCard_sublimacion: { borderTopColor: '#16a34a' },
-  areaReportCard_administracion: { borderTopColor: '#f59e0b' },
-  areaReportHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
-  areaReportKicker: { color: '#64748b', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' },
-  areaReportTitle: { margin: '3px 0 0', color: '#0f172a', fontSize: 18 },
-  areaReportBadge: { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: 999, padding: '5px 10px', fontSize: 12, fontWeight: 900 },
-  areaReportMetrics: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: 12 },
+  areaReportCard_impresion: { background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)' },
+  areaReportCard_diseno: { background: 'linear-gradient(135deg, #6d28d9 0%, #8b5cf6 100%)' },
+  areaReportCard_sublimacion: { background: 'linear-gradient(135deg, #15803d 0%, #16a34a 100%)' },
+  areaReportCard_administracion: { background: 'linear-gradient(135deg, #b45309 0%, #f59e0b 100%)' },
+  areaReportHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
+  areaReportKicker: { color: 'rgba(255,255,255,.82)', fontSize: 11, fontWeight: 800, textTransform: 'uppercase' },
+  areaReportTitle: { margin: '3px 0 0', color: '#fff', fontSize: 18 },
+  areaReportBadge: { background: 'rgba(255,255,255,.18)', color: '#fff', border: '1px solid rgba(255,255,255,.34)', borderRadius: 999, padding: '5px 10px', fontSize: 12, fontWeight: 900 },
+  areaReportMetrics: { display: 'none' },
   areaReportMetric: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 9, display: 'flex', flexDirection: 'column', gap: 4 },
-  areaReportPreview: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 },
+  areaReportPreview: { display: 'none' },
   areaReportItem: { border: '1px solid #e2e8f0', background: '#fff', borderRadius: 12, padding: '9px 10px', textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 3 },
   areaReportEmpty: { border: '1px dashed #cbd5e1', background: '#f8fafc', borderRadius: 12, padding: 12, color: '#64748b', fontSize: 13 },
-  areaReportActions: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'space-between' },
+  areaReportActions: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-start' },
+  areaGenerateBtn: { background: '#fff', color: '#0f172a', border: '1px solid rgba(255,255,255,.5)', boxShadow: 'none' },
+  hidden: { display: 'none' },
   table: { width: '100%', borderCollapse: 'collapse' },
   clickableRow: { cursor: 'pointer' },
   rowActions: { display: 'flex', gap: 6, flexWrap: 'wrap' },
