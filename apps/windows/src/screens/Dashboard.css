@@ -713,6 +713,10 @@ body,
   text-transform: uppercase;
 }
 
+.dashboard-control-link .dashboard-control-icon {
+  color: #fff;
+}
+
 .dashboard-control-link strong {
   color: #0f172a;
   font-size: 14px;
