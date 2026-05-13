@@ -1,0 +1,35 @@
+<svg width="1400" height="280" viewBox="0 0 1400 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f8fafc" />
+      <stop offset="100%" stop-color="#e2e8f0" />
+    </linearGradient>
+    <radialGradient id="lens" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#dbeafe" />
+      <stop offset="55%" stop-color="#334155" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1400" height="280" rx="26" fill="#0b1220" />
+
+  <text x="70" y="175" font-family="Segoe UI, Arial, sans-serif" font-size="132" font-style="italic" fill="url(#g1)">
+    EsMark
+  </text>
+  <text x="520" y="210" font-family="Segoe UI, Arial, sans-serif" font-size="58" font-weight="700" fill="url(#g1)">
+    MEDIA
+  </text>
+
+  <g transform="translate(980,35)">
+    <rect x="0" y="42" width="40" height="128" rx="20" fill="#ef4444" />
+    <rect x="160" y="42" width="40" height="128" rx="20" fill="#22c55e" />
+    <rect x="42" y="0" width="128" height="40" rx="20" fill="#f59e0b" />
+    <rect x="42" y="170" width="128" height="40" rx="20" fill="#eab308" />
+    <rect x="42" y="0" width="128" height="40" rx="20" transform="translate(30,0)" fill="#0ea5e9" />
+
+    <circle cx="100" cy="106" r="92" fill="#f8fafc" />
+    <circle cx="100" cy="106" r="70" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="6" />
+    <circle cx="100" cy="106" r="46" fill="url(#lens)" />
+    <circle cx="118" cy="88" r="9" fill="#ffffff" opacity="0.9" />
+  </g>
+</svg>
