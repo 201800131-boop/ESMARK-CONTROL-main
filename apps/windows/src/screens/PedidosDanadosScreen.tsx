@@ -405,7 +405,7 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
 
     const qty = 1;
     if (!nombrePedido.trim() || !personaDano.trim() || !motivoDano.trim()) {
-      setError('Completa los campos obligatorios: nombre del pedido, persona que causó el daño y motivo.');
+      setError('Completa los campos obligatorios: nombre del pedido, responsable del incidente y motivo.');
       return;
     }
 
@@ -760,7 +760,7 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
             <div style={styles.gridForm}>
               <input style={{ ...styles.input, ...styles.span2 }} placeholder="Nombre del pedido *" value={nombrePedido} onChange={(e) => setNombrePedido(e.target.value)} />
               <input style={styles.input} placeholder="Tipo de trabajo" value={tipoTrabajo} onChange={(e) => setTipoTrabajo(e.target.value)} />
-              <input style={styles.input} placeholder="Persona que causó el daño *" value={personaDano} onChange={(e) => setPersonaDano(e.target.value)} required />
+              <input style={styles.input} placeholder="Responsable del incidente *" value={personaDano} onChange={(e) => setPersonaDano(e.target.value)} required />
             </div>
 
             {selectedCard && (
