@@ -1,6 +1,14 @@
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
 .dashboard-container {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background:
     linear-gradient(135deg, rgba(37, 99, 235, 0.08) 0%, rgba(20, 184, 166, 0.06) 32%, rgba(248, 250, 252, 0) 58%),
     #eef2f7;
@@ -8,7 +16,12 @@
 }
 
 .dashboard-sidebar {
+  flex: 0 0 260px;
   width: 260px;
+  height: 100vh;
+  overflow: hidden;
+  position: sticky;
+  top: 0;
   background: linear-gradient(180deg, #101827 0%, #0f172a 54%, #111827 100%);
   border-right: 1px solid #1e293b;
   display: flex;
@@ -120,8 +133,30 @@
 
 .dashboard-main {
   flex: 1;
-  overflow: auto;
+  min-width: 0;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 24px;
+  scrollbar-gutter: stable;
+}
+
+.dashboard-main::-webkit-scrollbar {
+  width: 10px;
+}
+
+.dashboard-main::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.75);
+}
+
+.dashboard-main::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 999px;
+  border: 2px solid rgba(226, 232, 240, 0.75);
+}
+
+.dashboard-main::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
 
 .dashboard-header {
@@ -802,13 +837,19 @@
 @media (max-width: 860px) {
   .dashboard-container {
     flex-direction: column;
+    height: 100vh;
   }
 
   .dashboard-sidebar {
+    flex: 0 0 auto;
     width: auto;
+    height: auto;
+    position: static;
   }
 
   .dashboard-main {
+    height: auto;
+    min-height: 0;
     padding: 18px;
   }
 
