@@ -264,7 +264,8 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
 
   const now = new Date();
   const day = now.getDate();
-  const canGenerateToday = day === 15 || day === 30;
+  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const canGenerateToday = day === 15 || day === lastDayOfMonth;
   const canGenerateExcel = user.role === 'admin' && canGenerateToday;
 
   React.useEffect(() => {
@@ -550,7 +551,7 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
       if (user.role !== 'admin') {
         setError('Solo el administrador puede generar Excel de cierre.');
       } else {
-        setError('El Excel de cierre solo puede generarse los días 15 y 30 a las 8:00 AM.');
+        setError('El Excel de cierre solo puede generarse a mitad de mes o el último día del mes.');
       }
       return;
     }
@@ -746,8 +747,8 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
         {!canGenerateExcel && (
           <p style={styles.info}>
             {user.role === 'admin'
-              ? 'El botón de Excel se habilita solo el 15 y 30 a las 8:00 AM.'
-              : 'Solo el administrador puede generar el Excel quincenal (15 y 30 a las 8:00 AM).'}
+              ? 'El botón de Excel se habilita a mitad de mes y el último día del mes.'
+              : 'Solo el administrador puede generar el Excel quincenal a mitad de mes y fin de mes.'}
           </p>
         )}
         {success && <p style={styles.success}>{success}</p>}

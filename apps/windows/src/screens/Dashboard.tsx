@@ -62,12 +62,12 @@ function getPeriodLabel(period: PeriodFilter): string {
 
 function getNextAreaReportClosingDate(): Date {
   const now = new Date();
-  const close = new Date(now.getFullYear(), now.getMonth(), 15, 18, 0, 0, 0);
+  const midMonthClose = new Date(now.getFullYear(), now.getMonth(), 15, 18, 0, 0, 0);
+  const endMonthClose = new Date(now.getFullYear(), now.getMonth() + 1, 0, 18, 0, 0, 0);
 
-  if (close <= now) {
-    return new Date(now.getFullYear(), now.getMonth() + 1, 15, 18, 0, 0, 0);
-  }
-  return close;
+  if (now < midMonthClose) return midMonthClose;
+  if (now < endMonthClose) return endMonthClose;
+  return new Date(now.getFullYear(), now.getMonth() + 1, 15, 18, 0, 0, 0);
 }
 
 function formatClosingDate(value: Date): string {
