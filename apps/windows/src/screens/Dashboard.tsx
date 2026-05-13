@@ -60,6 +60,40 @@ function getPeriodLabel(period: PeriodFilter): string {
   return 'Todo';
 }
 
+function getNextClosingDate(period: PeriodFilter): Date {
+  const now = new Date();
+  const close = new Date(now);
+  close.setHours(18, 0, 0, 0);
+
+  if (period === 'hoy' || period === 'todo') {
+    if (close <= now) close.setDate(close.getDate() + 1);
+    return close;
+  }
+
+  if (period === 'semana') {
+    const daysUntilSunday = (7 - close.getDay()) % 7;
+    close.setDate(close.getDate() + daysUntilSunday);
+    if (close <= now) close.setDate(close.getDate() + 7);
+    return close;
+  }
+
+  const monthClose = new Date(now.getFullYear(), now.getMonth() + 1, 0, 18, 0, 0, 0);
+  if (monthClose <= now) {
+    return new Date(now.getFullYear(), now.getMonth() + 2, 0, 18, 0, 0, 0);
+  }
+  return monthClose;
+}
+
+function formatClosingDate(value: Date): string {
+  return new Intl.DateTimeFormat('es-HN', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(value);
+}
+
 function getAreaInitial(area?: string): string {
   const code = normalizeAreaCode(area);
   if (code === 'impresion') return 'I';
@@ -95,6 +129,10 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
   const completionRate = adminStats.totalPedidos > 0
     ? Math.min(100, Math.round((adminStats.totalReportes / adminStats.totalPedidos) * 100))
     : 0;
+  const nextClosingLabel = React.useMemo(
+    () => formatClosingDate(getNextClosingDate(periodFilter)),
+    [periodFilter],
+  );
 
   React.useEffect(() => {
     window.localStorage.setItem(DASHBOARD_SECTION_KEY, section);
@@ -277,6 +315,10 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
                   <span className="dashboard-admin-side-label">Cobertura de cierre</span>
                   <strong className="dashboard-admin-side-value">{adminStats.totalReportes}/{adminStats.totalPedidos}</strong>
                   <p className="dashboard-admin-side-copy">Reportes generados contra pedidos del periodo.</p>
+                  <div className="dashboard-next-close">
+                    <span>Próximo cierre</span>
+                    <strong>{nextClosingLabel}</strong>
+                  </div>
                 </div>
               </div>
             </section>
