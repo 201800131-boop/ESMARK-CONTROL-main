@@ -60,28 +60,14 @@ function getPeriodLabel(period: PeriodFilter): string {
   return 'Todo';
 }
 
-function getNextClosingDate(period: PeriodFilter): Date {
+function getNextAreaReportClosingDate(): Date {
   const now = new Date();
-  const close = new Date(now);
-  close.setHours(18, 0, 0, 0);
+  const close = new Date(now.getFullYear(), now.getMonth(), 15, 18, 0, 0, 0);
 
-  if (period === 'hoy' || period === 'todo') {
-    if (close <= now) close.setDate(close.getDate() + 1);
-    return close;
+  if (close <= now) {
+    return new Date(now.getFullYear(), now.getMonth() + 1, 15, 18, 0, 0, 0);
   }
-
-  if (period === 'semana') {
-    const daysUntilSunday = (7 - close.getDay()) % 7;
-    close.setDate(close.getDate() + daysUntilSunday);
-    if (close <= now) close.setDate(close.getDate() + 7);
-    return close;
-  }
-
-  const monthClose = new Date(now.getFullYear(), now.getMonth() + 1, 0, 18, 0, 0, 0);
-  if (monthClose <= now) {
-    return new Date(now.getFullYear(), now.getMonth() + 2, 0, 18, 0, 0, 0);
-  }
-  return monthClose;
+  return close;
 }
 
 function formatClosingDate(value: Date): string {
@@ -130,8 +116,8 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
     ? Math.min(100, Math.round((adminStats.totalReportes / adminStats.totalPedidos) * 100))
     : 0;
   const nextClosingLabel = React.useMemo(
-    () => formatClosingDate(getNextClosingDate(periodFilter)),
-    [periodFilter],
+    () => formatClosingDate(getNextAreaReportClosingDate()),
+    [],
   );
 
   React.useEffect(() => {
@@ -316,7 +302,7 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
                   <strong className="dashboard-admin-side-value">{adminStats.totalReportes}/{adminStats.totalPedidos}</strong>
                   <p className="dashboard-admin-side-copy">Reportes generados contra pedidos del periodo.</p>
                   <div className="dashboard-next-close">
-                    <span>Próximo cierre</span>
+                    <span>Próximo cierre por área</span>
                     <strong>{nextClosingLabel}</strong>
                   </div>
                 </div>
