@@ -66,20 +66,34 @@ function setupAutoUpdates(win: BrowserWindow): void {
   if (!app.isPackaged) return;
 
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
 
   autoUpdater.on('error', (error) => {
     console.error('AutoUpdater error:', error);
   });
 
-  autoUpdater.on('update-downloaded', () => {
+  // Cuando se detecta una actualización disponible
+  autoUpdater.on('update-available', (info) => {
     void dialog
       .showMessageBox(win, {
         type: 'info',
-        title: 'Actualizacion lista',
-        message: 'Se descargo una nueva version de ESMARK Control.',
-        detail: 'Reinicia la aplicacion para instalarla ahora.',
-        buttons: ['Reiniciar ahora', 'Mas tarde'],
+        title: 'Actualización disponible',
+        message: `Nueva versión: ${info.version}`,
+        detail: 'Se está descargando la actualización. Te avisaremos cuando esté lista para instalar.',
+        buttons: ['OK'],
+        defaultId: 0,
+      });
+  });
+
+  // Cuando la actualización se ha descargado completamente
+  autoUpdater.on('update-downloaded', (info) => {
+    void dialog
+      .showMessageBox(win, {
+        type: 'info',
+        title: '¡Actualización lista!',
+        message: `ESMARK Control v${info.version} está lista para instalar.`,
+        detail: 'Se desinstalará la versión anterior y se instalará la nueva automáticamente.',
+        buttons: ['Instalar ahora', 'Más tarde'],
         defaultId: 0,
         cancelId: 1,
       })
@@ -92,10 +106,10 @@ function setupAutoUpdates(win: BrowserWindow): void {
 
   void autoUpdater.checkForUpdates();
 
-  // Revisa actualizaciones periodicamente mientras la app este abierta.
+  // Revisa actualizaciones cada 1 hora mientras la app esté abierta
   setInterval(() => {
     void autoUpdater.checkForUpdates();
-  }, 1000 * 60 * 60 * 6);
+  }, 1000 * 60 * 60);
 }
 
 app.whenReady().then(() => {
