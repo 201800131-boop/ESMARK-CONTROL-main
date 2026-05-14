@@ -4,6 +4,7 @@
     "jsx": "react-jsx",
     "lib": ["ES2020", "DOM"],
     "module": "ESNext",
+    "types": ["vite/client", "react", "react-dom"],
     "outDir": "dist",
     "baseUrl": "."
   },

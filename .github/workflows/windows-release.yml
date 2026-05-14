@@ -70,7 +70,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: unsigned-installer-${{ github.run_id }}
-          path: apps/windows/release/ESMARK Control Setup *.exe
+          path: apps/windows/release/ESMARK-Control-Setup-*.exe
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
@@ -96,14 +96,19 @@ jobs:
           if (-not $signedExe) {
             throw "No signed .exe found in apps/windows/release/signed"
           }
-          Copy-Item -Path $signedExe.FullName -Destination "apps/windows/release" -Force
+          $version = (Get-Content "apps/windows/package.json" -Raw | ConvertFrom-Json).version
+          $target = "apps/windows/release/ESMARK-Control-Setup-$version.exe"
+          Copy-Item -Path $signedExe.FullName -Destination $target -Force
+
+      - name: Refresh update metadata for signed installer
+        working-directory: apps/windows
+        run: node scripts/refresh-latest-yml.cjs
 
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            apps/windows/release/*.exe
-            apps/windows/release/*.blockmap
+            apps/windows/release/ESMARK-Control-Setup-*.exe
             apps/windows/release/latest.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

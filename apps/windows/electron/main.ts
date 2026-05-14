@@ -143,7 +143,10 @@ function createUpdateOverlay(parent: BrowserWindow): BrowserWindow {
 
   const area = screen.getDisplayMatching(parent.getBounds()).workArea;
   const [w, h] = overlay.getSize();
-  overlay.setPosition(area.x + area.width - w - 14, area.y + area.height - h - 14);
+  overlay.setPosition(
+    area.x + area.width - w - 14,
+    area.y + area.height - h - 14,
+  );
 
   return overlay;
 }
@@ -152,7 +155,7 @@ function updateOverlay(
   overlay: BrowserWindow,
   title: string,
   message: string,
-  percent: number
+  percent: number,
 ): void {
   const safePercent = Math.max(0, Math.min(100, Math.round(percent)));
   const script = `
@@ -167,12 +170,12 @@ function updateOverlay(
 function setupAutoUpdates(win: BrowserWindow): void {
   if (!app.isPackaged) return;
 
-  let updateOverlay: BrowserWindow | null = null;
+  let updateOverlayWindow: BrowserWindow | null = null;
   const getOverlay = (): BrowserWindow => {
-    if (!updateOverlay || updateOverlay.isDestroyed()) {
-      updateOverlay = createUpdateOverlay(win);
+    if (!updateOverlayWindow || updateOverlayWindow.isDestroyed()) {
+      updateOverlayWindow = createUpdateOverlay(win);
     }
-    return updateOverlay;
+    return updateOverlayWindow;
   };
 
   // Configurar electron-updater para descargas delta (solo cambios, no todo el archivo)
@@ -180,55 +183,57 @@ function setupAutoUpdates(win: BrowserWindow): void {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = false;
 
-  autoUpdater.on('error', (error) => {
-    console.error('AutoUpdater error:', error);
+  autoUpdater.on("error", (error) => {
+    console.error("AutoUpdater error:", error);
   });
 
   // Cuando se detecta una actualización disponible - descarga silenciosamente
-  autoUpdater.on('update-available', (info) => {
-    console.log('✓ Actualización disponible:', info.version);
-    console.log('  Descargando silenciosamente en background...');
+  autoUpdater.on("update-available", (info) => {
+    console.log("✓ Actualización disponible:", info.version);
+    console.log("  Descargando silenciosamente en background...");
     const overlay = getOverlay();
     overlay.showInactive();
     updateOverlay(
       overlay,
       `Actualizando a v${info.version}`,
-      'Descargando actualización en segundo plano...',
-      0
+      "Descargando actualización en segundo plano...",
+      0,
     );
   });
 
   // Progreso de descarga con ventana flotante
-  autoUpdater.on('download-progress', (progress) => {
-    console.log(`  Descarga: ${Math.round(progress.percent)}% (${progress.transferred}/${progress.total} bytes)`);
+  autoUpdater.on("download-progress", (progress) => {
+    console.log(
+      `  Descarga: ${Math.round(progress.percent)}% (${progress.transferred}/${progress.total} bytes)`,
+    );
     const overlay = getOverlay();
     overlay.showInactive();
     updateOverlay(
       overlay,
-      'Descargando actualización',
-      'La nueva versión se instalará cuando la confirmes.',
-      progress.percent
+      "Descargando actualización",
+      "La nueva versión se instalará cuando la confirmes.",
+      progress.percent,
     );
   });
 
   // Cuando la actualización se ha descargado completamente
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log('✓ Actualización lista para instalar:', info.version);
-    if (updateOverlay && !updateOverlay.isDestroyed()) {
+  autoUpdater.on("update-downloaded", (info) => {
+    console.log("✓ Actualización lista para instalar:", info.version);
+    if (updateOverlayWindow && !updateOverlayWindow.isDestroyed()) {
       updateOverlay(
-        updateOverlay,
+        updateOverlayWindow,
         `Actualización v${info.version} lista`,
         'Pulsa "Instalar ahora" para reiniciar y aplicar cambios.',
-        100
+        100,
       );
     }
     void dialog
       .showMessageBox(win, {
-        type: 'info',
-        title: '¡Actualización lista!',
+        type: "info",
+        title: "¡Actualización lista!",
         message: `ESMARK Control v${info.version} está lista para instalar.`,
-        detail: 'Se instalará automáticamente y se reiniciará la aplicación.',
-        buttons: ['Instalar ahora', 'Más tarde'],
+        detail: "Se instalará automáticamente y se reiniciará la aplicación.",
+        buttons: ["Instalar ahora", "Más tarde"],
         defaultId: 0,
         cancelId: 1,
       })
@@ -238,34 +243,37 @@ function setupAutoUpdates(win: BrowserWindow): void {
           return;
         }
 
-        if (updateOverlay && !updateOverlay.isDestroyed()) {
-          updateOverlay.close();
-          updateOverlay = null;
+        if (updateOverlayWindow && !updateOverlayWindow.isDestroyed()) {
+          updateOverlayWindow.close();
+          updateOverlayWindow = null;
         }
       });
   });
 
-  console.log('Checando actualizaciones al iniciar...');
+  console.log("Checando actualizaciones al iniciar...");
   void autoUpdater.checkForUpdates();
 
   // Revisa actualizaciones cada 5 minutos mientras la app esté abierta
-  const updateCheckInterval = setInterval(() => {
-    console.log('Checando actualizaciones...');
-    void autoUpdater.checkForUpdates();
-  }, 1000 * 60 * 5);
+  const updateCheckInterval = setInterval(
+    () => {
+      console.log("Checando actualizaciones...");
+      void autoUpdater.checkForUpdates();
+    },
+    1000 * 60 * 5,
+  );
 
   // Revisa actualizaciones cuando la app gana focus (cambias de ventana y vuelves)
-  win.on('focus', () => {
-    console.log('App en focus - checando actualizaciones...');
+  win.on("focus", () => {
+    console.log("App en focus - checando actualizaciones...");
     void autoUpdater.checkForUpdates();
   });
 
   // Limpia el intervalo cuando se cierra la ventana
-  win.on('closed', () => {
+  win.on("closed", () => {
     clearInterval(updateCheckInterval);
-    if (updateOverlay && !updateOverlay.isDestroyed()) {
-      updateOverlay.close();
-      updateOverlay = null;
+    if (updateOverlayWindow && !updateOverlayWindow.isDestroyed()) {
+      updateOverlayWindow.close();
+      updateOverlayWindow = null;
     }
   });
 }
