@@ -1,0 +1,11 @@
+name: Legacy Sign and Release (disabled)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notice
+        run: echo "Use .github/workflows/windows-release.yml as the active pipeline."

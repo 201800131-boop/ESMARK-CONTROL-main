@@ -3,19 +3,20 @@ name: Windows Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
-  build-and-release:
+  build-sign-and-release:
     runs-on: windows-latest
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_OWNER: ${{ github.repository_owner }}
       GH_REPO: ${{ github.event.repository.name }}
+      CSC_IDENTITY_AUTO_DISCOVERY: false
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,12 +29,51 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies (monorepo root)
-        run: npm.cmd install
+        run: npm.cmd ci
 
-      - name: Install dependencies in Windows workspace
+      - name: Build installer (unsigned)
         working-directory: apps/windows
-        run: npm.cmd install
+        run: npm.cmd run electron:build
 
-      - name: Build and publish release
-        working-directory: apps/windows
-        run: npm.cmd run electron:publish
+      - name: Upload unsigned installer to GitHub artifact
+        id: upload_unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installer-${{ github.run_id }}
+          path: apps/windows/release/ESMARK Control Setup *.exe
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Sign installer with SignPath
+        id: signpath
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: initial-version
+          github-artifact-id: ${{ steps.upload_unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: apps/windows/release/signed
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Replace unsigned installer with signed one
+        shell: pwsh
+        run: |
+          $signedExe = Get-ChildItem "apps/windows/release/signed" -Recurse -Filter "*.exe" | Select-Object -First 1
+          if (-not $signedExe) {
+            throw "No signed .exe found in apps/windows/release/signed"
+          }
+          Copy-Item -Path $signedExe.FullName -Destination "apps/windows/release" -Force
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/windows/release/*.exe
+            apps/windows/release/*.blockmap
+            apps/windows/release/latest.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
