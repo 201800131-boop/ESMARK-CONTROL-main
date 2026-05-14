@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, screen, shell } from "electron";
+import { app, BrowserWindow, screen, shell } from "electron";
 import path from "path";
 import fs from "fs";
 import { autoUpdater } from "electron-updater";
@@ -294,7 +294,9 @@ function createUpdateReadyWindow(parent: BrowserWindow, version: string): Browse
     </div>
   </main>
   <script>
-    const send = (action) => window.esmarkUpdates?.sendUpdateAction(action);
+    const send = (action) => {
+      window.location.href = "esmark-update://" + action;
+    };
     document.getElementById("install").addEventListener("click", () => send("install"));
     document.getElementById("later").addEventListener("click", () => send("later"));
     document.getElementById("later-x").addEventListener("click", () => send("later"));
@@ -303,6 +305,19 @@ function createUpdateReadyWindow(parent: BrowserWindow, version: string): Browse
 </html>`;
 
   const encoded = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+  updateWindow.webContents.on("will-navigate", (event, url) => {
+    if (!url.startsWith("esmark-update://")) return;
+
+    event.preventDefault();
+    if (url === "esmark-update://install") {
+      autoUpdater.quitAndInstall();
+      return;
+    }
+
+    if (!updateWindow.isDestroyed()) {
+      updateWindow.close();
+    }
+  });
   void updateWindow.loadURL(encoded);
   updateWindow.once("ready-to-show", () => updateWindow.show());
 
@@ -412,19 +427,6 @@ function setupAutoUpdates(win: BrowserWindow): void {
     }
   });
 }
-
-ipcMain.on("update-action", (event, action: "install" | "later") => {
-  const sourceWindow = BrowserWindow.fromWebContents(event.sender);
-
-  if (action === "install") {
-    autoUpdater.quitAndInstall();
-    return;
-  }
-
-  if (sourceWindow && !sourceWindow.isDestroyed()) {
-    sourceWindow.close();
-  }
-});
 
 app.whenReady().then(() => {
   if (process.platform === "win32") {

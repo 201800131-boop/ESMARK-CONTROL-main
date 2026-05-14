@@ -17,6 +17,9 @@ jobs:
       GH_OWNER: ${{ github.repository_owner }}
       GH_REPO: ${{ github.event.repository.name }}
       CSC_IDENTITY_AUTO_DISCOVERY: false
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      VITE_TRELLO_BOARD_ID: ${{ secrets.VITE_TRELLO_BOARD_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
