@@ -30,5 +30,8 @@ jobs:
       - name: Install dependencies (monorepo root)
         run: npm.cmd ci
 
+      - name: Ensure 7zip binary dependency
+        run: npm.cmd install 7zip-bin --no-save
+
       - name: Build and publish release
         run: npm.cmd run -w @esmark/windows electron:publish
