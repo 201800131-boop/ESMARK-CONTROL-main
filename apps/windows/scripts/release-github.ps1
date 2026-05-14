@@ -1,34 +1,45 @@
 $ErrorActionPreference = 'Stop'
 
-Set-Location (Join-Path $PSScriptRoot '..')
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
+Set-Location $repoRoot
 
-$required = @('GH_TOKEN', 'GH_OWNER', 'GH_REPO')
-$missing = @()
-
-foreach ($name in $required) {
-  if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-    $missing += $name
-  }
+$dirty = git status --porcelain
+if (-not [string]::IsNullOrWhiteSpace($dirty)) {
+  Write-Error 'Hay cambios sin commit. Limpia o guarda esos cambios antes de ejecutar release:auto.'
 }
 
-if ($missing.Count -gt 0) {
-  Write-Error "Faltan variables de entorno: $($missing -join ', ')."
+$packagePath = Join-Path $repoRoot 'apps\windows\package.json'
+$raw = Get-Content $packagePath -Raw
+
+$versionMatch = [regex]::Match($raw, '"version"\s*:\s*"(\d+)\.(\d+)\.(\d+)"')
+if (-not $versionMatch.Success) {
+  Write-Error 'No se pudo leer version semver desde apps/windows/package.json.'
 }
 
-Write-Host 'Limpieza previa de release...' -ForegroundColor Cyan
-if (Test-Path 'release') {
-  try {
-    Remove-Item -Recurse -Force 'release' -ErrorAction Stop
-  }
-  catch {
-    Write-Warning 'No se pudo borrar release completo (archivo bloqueado). Se continuara con el build.'
-  }
-}
+$major = [int]$versionMatch.Groups[1].Value
+$minor = [int]$versionMatch.Groups[2].Value
+$patch = [int]$versionMatch.Groups[3].Value
 
-Write-Host 'Compilando app...' -ForegroundColor Cyan
-npm.cmd run build
+$newVersion = "$major.$minor.$($patch + 1)"
+$newTag = "v$newVersion"
 
-Write-Host 'Publicando release en GitHub...' -ForegroundColor Cyan
-npx.cmd electron-builder --publish always
+Write-Host "Incrementando version a $newVersion ..." -ForegroundColor Cyan
 
-Write-Host 'Release publicado correctamente.' -ForegroundColor Green
+$updated = [regex]::Replace(
+  $raw,
+  '"version"\s*:\s*"\d+\.\d+\.\d+"',
+  "\"version\": \"$newVersion\"",
+  1
+)
+
+Set-Content -Path $packagePath -Value $updated -Encoding UTF8
+
+git add apps/windows/package.json
+git commit -m "chore(release): bump windows app to $newTag"
+git tag $newTag
+
+Write-Host 'Publicando commit y tag...' -ForegroundColor Cyan
+git push origin main
+git push origin $newTag
+
+Write-Host "Release preparado. Se disparo el workflow con tag $newTag." -ForegroundColor Green
