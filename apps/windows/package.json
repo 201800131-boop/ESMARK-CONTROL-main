@@ -1,6 +1,6 @@
 {
   "name": "@esmark/windows",
-  "version": "1.0.25",
+  "version": "1.0.26",
   "description": "ESMARK Control desktop app",
   "author": "ESMARK",
   "private": true,
@@ -66,8 +66,8 @@
       ]
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
       "allowElevation": false,
       "perMachine": false,
       "installerIcon": "public/app-icon.ico",
