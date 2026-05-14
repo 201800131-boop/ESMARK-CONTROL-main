@@ -126,8 +126,6 @@ function setupAutoUpdates(win: BrowserWindow): void {
     clearInterval(updateCheckInterval);
   });
 }
-  });
-}
 
 app.whenReady().then(() => {
   if (process.platform === "win32") {
