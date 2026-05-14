@@ -1,2 +1,7 @@
-// Preload script – expone APIs seguras al renderer si se necesitan en el futuro
-// Por ahora no se expone nada (contextIsolation: true garantiza seguridad)
+import { contextBridge, ipcRenderer } from "electron";
+
+contextBridge.exposeInMainWorld("esmarkUpdates", {
+  sendUpdateAction: (action: "install" | "later") => {
+    ipcRenderer.send("update-action", action);
+  },
+});

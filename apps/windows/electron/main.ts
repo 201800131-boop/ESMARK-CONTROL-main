@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, screen, shell } from "electron";
+import { app, BrowserWindow, ipcMain, screen, shell } from "electron";
 import path from "path";
 import fs from "fs";
 import { autoUpdater } from "electron-updater";
@@ -167,10 +167,153 @@ function updateOverlay(
   void overlay.webContents.executeJavaScript(script);
 }
 
+function createUpdateReadyWindow(parent: BrowserWindow, version: string): BrowserWindow {
+  const updateWindow = new BrowserWindow({
+    width: 430,
+    height: 245,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    show: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    backgroundColor: "#f8fafc",
+    parent,
+    modal: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  const html = `
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: #f8fafc;
+      color: #162033;
+      user-select: none;
+    }
+    .titlebar {
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px 0 18px;
+      background: #101820;
+      color: #fff;
+      -webkit-app-region: drag;
+    }
+    .titlebar span {
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .close {
+      width: 30px;
+      height: 30px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #dbe5ef;
+      font-size: 20px;
+      line-height: 28px;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+    }
+    .close:hover { background: rgba(255, 255, 255, 0.12); }
+    main { padding: 22px 24px 20px; }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 20px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 0;
+      color: #516070;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .version {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border: 1px solid #d9e2ec;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 13px;
+      color: #223044;
+    }
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    button {
+      min-width: 112px;
+      height: 36px;
+      border-radius: 7px;
+      border: 1px solid #cbd5e1;
+      font: 600 13px "Segoe UI", Tahoma, sans-serif;
+      cursor: pointer;
+    }
+    .secondary {
+      background: #fff;
+      color: #304154;
+    }
+    .primary {
+      border-color: #0f766e;
+      background: #0f766e;
+      color: #fff;
+    }
+    .primary:hover { background: #115e59; }
+    .secondary:hover { background: #f1f5f9; }
+  </style>
+</head>
+<body>
+  <div class="titlebar">
+    <span>Actualización de ESMARK Control</span>
+    <button class="close" id="later-x" aria-label="Cerrar">×</button>
+  </div>
+  <main>
+    <h1>Hay una nueva versión lista</h1>
+    <p>La actualización ya se descargó. Para aplicarla, la app se cerrará y volverá a abrirse automáticamente.</p>
+    <div class="version">Versión disponible: <strong>v${version}</strong></div>
+    <div class="actions">
+      <button class="secondary" id="later">Más tarde</button>
+      <button class="primary" id="install">Instalar ahora</button>
+    </div>
+  </main>
+  <script>
+    const send = (action) => window.esmarkUpdates?.sendUpdateAction(action);
+    document.getElementById("install").addEventListener("click", () => send("install"));
+    document.getElementById("later").addEventListener("click", () => send("later"));
+    document.getElementById("later-x").addEventListener("click", () => send("later"));
+  </script>
+</body>
+</html>`;
+
+  const encoded = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+  void updateWindow.loadURL(encoded);
+  updateWindow.once("ready-to-show", () => updateWindow.show());
+
+  return updateWindow;
+}
+
 function setupAutoUpdates(win: BrowserWindow): void {
   if (!app.isPackaged) return;
 
   let updateOverlayWindow: BrowserWindow | null = null;
+  let updateReadyWindow: BrowserWindow | null = null;
   const getOverlay = (): BrowserWindow => {
     if (!updateOverlayWindow || updateOverlayWindow.isDestroyed()) {
       updateOverlayWindow = createUpdateOverlay(win);
@@ -227,27 +370,15 @@ function setupAutoUpdates(win: BrowserWindow): void {
         100,
       );
     }
-    void dialog
-      .showMessageBox(win, {
-        type: "info",
-        title: "¡Actualización lista!",
-        message: `ESMARK Control v${info.version} está lista para instalar.`,
-        detail: "Se instalará automáticamente y se reiniciará la aplicación.",
-        buttons: ["Instalar ahora", "Más tarde"],
-        defaultId: 0,
-        cancelId: 1,
-      })
-      .then((result) => {
-        if (result.response === 0) {
-          autoUpdater.quitAndInstall();
-          return;
-        }
+    if (updateReadyWindow && !updateReadyWindow.isDestroyed()) {
+      updateReadyWindow.focus();
+      return;
+    }
 
-        if (updateOverlayWindow && !updateOverlayWindow.isDestroyed()) {
-          updateOverlayWindow.close();
-          updateOverlayWindow = null;
-        }
-      });
+    updateReadyWindow = createUpdateReadyWindow(win, info.version);
+    updateReadyWindow.on("closed", () => {
+      updateReadyWindow = null;
+    });
   });
 
   console.log("Checando actualizaciones al iniciar...");
@@ -275,8 +406,25 @@ function setupAutoUpdates(win: BrowserWindow): void {
       updateOverlayWindow.close();
       updateOverlayWindow = null;
     }
+    if (updateReadyWindow && !updateReadyWindow.isDestroyed()) {
+      updateReadyWindow.close();
+      updateReadyWindow = null;
+    }
   });
 }
+
+ipcMain.on("update-action", (event, action: "install" | "later") => {
+  const sourceWindow = BrowserWindow.fromWebContents(event.sender);
+
+  if (action === "install") {
+    autoUpdater.quitAndInstall();
+    return;
+  }
+
+  if (sourceWindow && !sourceWindow.isDestroyed()) {
+    sourceWindow.close();
+  }
+});
 
 app.whenReady().then(() => {
   if (process.platform === "win32") {
