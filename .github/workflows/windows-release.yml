@@ -53,8 +53,10 @@ jobs:
             throw "No se encontró un ejecutable de 7-Zip en el runner"
           }
 
-          Copy-Item -Path $sevenZipExe -Destination "apps/windows/7za.exe" -Force
-          Copy-Item -Path $sevenZipExe -Destination "apps/windows/7za" -Force
+          $targetDir = "node_modules/7zip-bin/win/x64"
+          New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+          Copy-Item -Path $sevenZipExe -Destination (Join-Path $targetDir "7za.exe") -Force
+          Copy-Item -Path $sevenZipExe -Destination (Join-Path $targetDir "7za") -Force
 
       - name: Ensure 7zip-bin is available
         run: npm.cmd install 7zip-bin --no-save
