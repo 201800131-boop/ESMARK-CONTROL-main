@@ -12,9 +12,6 @@ permissions:
 jobs:
   build-and-release:
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: apps/windows
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_OWNER: ${{ github.repository_owner }}
@@ -28,12 +25,10 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            apps/windows/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        run: npm.cmd install
+      - name: Install dependencies (monorepo root)
+        run: npm.cmd ci
 
       - name: Build and publish release
-        run: npm.cmd run electron:publish
+        run: npm.cmd run -w @esmark/windows electron:publish
