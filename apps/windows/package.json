@@ -1,6 +1,6 @@
 {
   "name": "@esmark/windows",
-  "version": "1.0.4",
+  "version": "1.0.6",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
@@ -32,7 +32,7 @@
   "build": {
     "appId": "com.esmark.control",
     "productName": "ESMARK Control",
-    "icon": "public/esmark-logo.png",
+    "icon": "public/app-icon.ico",
     "directories": {
       "output": "release"
     },
@@ -42,11 +42,15 @@
     ],
     "win": {
       "target": "nsis",
+      "icon": "public/app-icon.ico",
       "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "public/app-icon.ico",
+      "uninstallerIcon": "public/app-icon.ico",
+      "installerHeaderIcon": "public/app-icon.ico"
     },
     "publish": {
       "provider": "github",
