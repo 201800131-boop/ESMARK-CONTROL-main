@@ -65,38 +65,37 @@ function createWindow(): BrowserWindow {
 function setupAutoUpdates(win: BrowserWindow): void {
   if (!app.isPackaged) return;
 
+  // Configurar electron-updater para descargas delta (solo cambios, no todo el archivo)
+  autoUpdater.allowDowngrade = false;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = false;
 
-  autoUpdater.on("error", (error) => {
-    console.error("AutoUpdater error:", error);
+  autoUpdater.on('error', (error) => {
+    console.error('AutoUpdater error:', error);
   });
 
-  // Cuando se detecta una actualización disponible
-  autoUpdater.on("update-available", (info) => {
-    console.log("Actualización disponible:", info.version);
-    void dialog.showMessageBox(win, {
-      type: "info",
-      title: "Actualización disponible",
-      message: `Nueva versión: ${info.version}`,
-      detail:
-        "Se está descargando la actualización. Te avisaremos cuando esté lista para instalar.",
-      buttons: ["OK"],
-      defaultId: 0,
-    });
+  // Cuando se detecta una actualización disponible - descarga silenciosamente
+  autoUpdater.on('update-available', (info) => {
+    console.log('✓ Actualización disponible:', info.version);
+    console.log('  Descargando silenciosamente en background...');
+    // No mostrar diálogo aquí - dejar que se descargue en silencio
+  });
+
+  // Progreso de descarga (solo en logs, sin UI)
+  autoUpdater.on('download-progress', (progress) => {
+    console.log(`  Descarga: ${Math.round(progress.percent)}% (${progress.transferred}/${progress.total} bytes)`);
   });
 
   // Cuando la actualización se ha descargado completamente
-  autoUpdater.on("update-downloaded", (info) => {
-    console.log("Actualización descargada:", info.version);
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('✓ Actualización lista para instalar:', info.version);
     void dialog
       .showMessageBox(win, {
-        type: "info",
-        title: "¡Actualización lista!",
+        type: 'info',
+        title: '¡Actualización lista!',
         message: `ESMARK Control v${info.version} está lista para instalar.`,
-        detail:
-          "Se desinstalará la versión anterior y se instalará la nueva automáticamente.",
-        buttons: ["Instalar ahora", "Más tarde"],
+        detail: 'Se instalará automáticamente y se reiniciará la aplicación.',
+        buttons: ['Instalar ahora', 'Más tarde'],
         defaultId: 0,
         cancelId: 1,
       })
@@ -107,27 +106,26 @@ function setupAutoUpdates(win: BrowserWindow): void {
       });
   });
 
-  console.log("Checando actualizaciones al iniciar...");
+  console.log('Checando actualizaciones al iniciar...');
   void autoUpdater.checkForUpdates();
 
   // Revisa actualizaciones cada 5 minutos mientras la app esté abierta
-  const updateCheckInterval = setInterval(
-    () => {
-      console.log("Checando actualizaciones (intervalo de 5 minutos)...");
-      void autoUpdater.checkForUpdates();
-    },
-    1000 * 60 * 5,
-  );
+  const updateCheckInterval = setInterval(() => {
+    console.log('Checando actualizaciones...');
+    void autoUpdater.checkForUpdates();
+  }, 1000 * 60 * 5);
 
-  // Revisa actualizaciones cuando la app gana focus
-  win.on("focus", () => {
-    console.log("App en focus - checando actualizaciones...");
+  // Revisa actualizaciones cuando la app gana focus (cambias de ventana y vuelves)
+  win.on('focus', () => {
+    console.log('App en focus - checando actualizaciones...');
     void autoUpdater.checkForUpdates();
   });
 
   // Limpia el intervalo cuando se cierra la ventana
-  win.on("closed", () => {
+  win.on('closed', () => {
     clearInterval(updateCheckInterval);
+  });
+}
   });
 }
 
