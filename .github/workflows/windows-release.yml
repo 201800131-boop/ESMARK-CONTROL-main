@@ -28,10 +28,12 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies (monorepo root)
-        run: npm.cmd ci
+        run: npm.cmd install
 
-      - name: Ensure 7zip binary dependency
-        run: npm.cmd install 7zip-bin --no-save
+      - name: Install dependencies in Windows workspace
+        working-directory: apps/windows
+        run: npm.cmd install
 
       - name: Build and publish release
-        run: npm.cmd run -w @esmark/windows electron:publish
+        working-directory: apps/windows
+        run: npm.cmd run electron:publish
