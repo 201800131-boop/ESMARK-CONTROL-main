@@ -6,8 +6,8 @@ const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
 function getAppIconPath(): string {
   return app.isPackaged
-    ? path.join(__dirname, '../dist/esmark-logo.png')
-    : path.join(process.cwd(), 'public', 'esmark-logo.png');
+    ? path.join(process.resourcesPath, 'app-icon.ico')
+    : path.join(process.cwd(), 'public', 'app-icon.ico');
 }
 
 function createWindow(): BrowserWindow {
@@ -78,6 +78,10 @@ function setupAutoUpdates(win: BrowserWindow): void {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.esmark.control');
+  }
+
   const win = createWindow();
   setupAutoUpdates(win);
 

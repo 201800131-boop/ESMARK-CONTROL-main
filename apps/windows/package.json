@@ -1,6 +1,8 @@
 {
   "name": "@esmark/windows",
-  "version": "1.0.6",
+  "version": "1.0.7",
+  "description": "ESMARK Control desktop app",
+  "author": "ESMARK",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
@@ -40,10 +42,18 @@
       "dist/**",
       "dist-electron/**"
     ],
+    "extraResources": [
+      {
+        "from": "public/app-icon.ico",
+        "to": "app-icon.ico"
+      }
+    ],
     "win": {
       "target": "nsis",
       "icon": "public/app-icon.ico",
-      "signAndEditExecutable": false
+      "publisherName": [
+        "ESMARK"
+      ]
     },
     "nsis": {
       "oneClick": false,
