@@ -1,13 +1,34 @@
 import { app, BrowserWindow, dialog, shell } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { autoUpdater } from 'electron-updater';
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
 function getAppIconPath(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'app-icon.ico')
-    : path.join(process.cwd(), 'public', 'app-icon.ico');
+  if (app.isPackaged) {
+    // Try multiple possible locations in packaged app
+    const possiblePaths = [
+      path.join(process.resourcesPath, 'app-icon.ico'),
+      path.join(__dirname, '../../app-icon.ico'),
+      path.join(app.getAppPath(), 'app-icon.ico'),
+    ];
+    
+    for (const p of possiblePaths) {
+      try {
+        fs.accessSync(p);
+        return p;
+      } catch (e) {
+        // Continue to next path
+      }
+    }
+    
+    // Fallback to first path if none found (will show default icon)
+    return possiblePaths[0];
+  } else {
+    // Dev mode
+    return path.join(process.cwd(), 'public', 'app-icon.ico');
+  }
 }
 
 function createWindow(): BrowserWindow {
