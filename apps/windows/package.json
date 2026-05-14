@@ -1,6 +1,6 @@
 {
   "name": "@esmark/windows",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "ESMARK Control desktop app",
   "author": "ESMARK",
   "private": true,
@@ -59,7 +59,7 @@
       "target": "nsis",
       "icon": "public/app-icon.ico",
       "publisherName": "ESMARK",
-      "verifyUpdateCodeSignature": true,
+      "verifyUpdateCodeSignature": false,
       "signAndEditExecutable": false,
       "signingHashAlgorithms": [
         "sha256"

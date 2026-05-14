@@ -83,6 +83,7 @@ jobs:
 
       - name: Sign installer with SignPath
         id: signpath
+        continue-on-error: true
         uses: signpath/github-action-submit-signing-request@v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -96,6 +97,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Replace unsigned installer with signed one
+        if: steps.signpath.outcome == 'success'
         shell: pwsh
         run: |
           $signedExe = Get-ChildItem "apps/windows/release/signed" -Recurse -Filter "*.exe" | Select-Object -First 1
