@@ -67,7 +67,7 @@
       "installerSidebar": "public/app-icon.ico",
       "installerHeader": "public/app-icon.ico",
       "differentialPackage": true,
-      "deleteAppFolderOnUninstall": true,
+      "deleteAppDataOnUninstall": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "ESMARK Control"
