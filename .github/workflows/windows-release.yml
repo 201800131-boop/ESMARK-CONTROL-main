@@ -29,7 +29,14 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies (monorepo root)
-        run: npm.cmd ci
+        run: npm.cmd install --include=optional
+
+      - name: Install dependencies in Windows workspace
+        working-directory: apps/windows
+        run: npm.cmd install --include=optional
+
+      - name: Ensure 7zip-bin is available
+        run: npm.cmd install 7zip-bin --no-save
 
       - name: Build installer (unsigned)
         working-directory: apps/windows
