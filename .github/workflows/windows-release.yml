@@ -38,6 +38,9 @@ jobs:
       - name: Install 7-Zip on runner
         run: choco install 7zip -y
 
+      - name: Ensure 7zip-bin is available
+        run: npm.cmd install 7zip-bin --no-save
+
       - name: Prepare local 7za binary for electron-builder
         shell: pwsh
         run: |
@@ -57,9 +60,6 @@ jobs:
           New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
           Copy-Item -Path $sevenZipExe -Destination (Join-Path $targetDir "7za.exe") -Force
           Copy-Item -Path $sevenZipExe -Destination (Join-Path $targetDir "7za") -Force
-
-      - name: Ensure 7zip-bin is available
-        run: npm.cmd install 7zip-bin --no-save
 
       - name: Build installer (unsigned)
         working-directory: apps/windows
