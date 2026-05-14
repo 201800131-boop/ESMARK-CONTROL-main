@@ -56,10 +56,16 @@ jobs:
             throw "No se encontró un ejecutable de 7-Zip en el runner"
           }
 
-          $targetDir = "node_modules/7zip-bin/win/x64"
-          New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-          Copy-Item -Path $sevenZipExe -Destination (Join-Path $targetDir "7za.exe") -Force
-          Copy-Item -Path $sevenZipExe -Destination (Join-Path $targetDir "7za") -Force
+          $targetDirs = @(
+            "node_modules/7zip-bin/win/x64",
+            "apps/windows/node_modules/7zip-bin/win/x64"
+          )
+
+          foreach ($targetDir in $targetDirs) {
+            New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+            Copy-Item -Path $sevenZipExe -Destination (Join-Path $targetDir "7za.exe") -Force
+            Copy-Item -Path $sevenZipExe -Destination (Join-Path $targetDir "7za") -Force
+          }
 
       - name: Build installer (unsigned)
         working-directory: apps/windows
