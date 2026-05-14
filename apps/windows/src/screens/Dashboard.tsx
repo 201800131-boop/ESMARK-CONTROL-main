@@ -1,17 +1,22 @@
-import React from 'react';
-import { signOut, updateLastSeen, type AuthUser, getAreaScope } from '../services/auth';
-import { supabase } from '../core/supabase';
-import { UserManagement } from './UserManagement';
-import { PedidosDanadosScreen } from './PedidosDanadosScreen';
-import { ReportesScreen } from './ReportesScreen';
-import './Dashboard.css';
+import React from "react";
+import {
+  signOut,
+  updateLastSeen,
+  type AuthUser,
+  getAreaScope,
+} from "../services/auth";
+import { supabase } from "../core/supabase";
+import { UserManagement } from "./UserManagement";
+import { PedidosDanadosScreen } from "./PedidosDanadosScreen";
+import { ReportesScreen } from "./ReportesScreen";
+import "./Dashboard.css";
 
-type Section = 'dashboard' | 'pedidos' | 'reportes' | 'usuarios';
-type PeriodFilter = 'hoy' | 'semana' | 'mes' | 'todo';
+type Section = "dashboard" | "pedidos" | "reportes" | "usuarios";
+type PeriodFilter = "hoy" | "semana" | "mes" | "todo";
 
-const DASHBOARD_SECTION_KEY = 'esmark.dashboard.section';
-const BRAND_LOGO_PRIMARY = 'esmark-logo.png';
-const BRAND_LOGO_FALLBACK = 'esmark-logo-business.svg';
+const DASHBOARD_SECTION_KEY = "esmark.dashboard.section";
+const BRAND_LOGO_PRIMARY = "esmark-logo.png";
+const BRAND_LOGO_FALLBACK = "esmark-logo-business.svg";
 
 interface DashboardProps {
   user: AuthUser;
@@ -32,38 +37,82 @@ interface AreaStatRow {
   cierres: number;
 }
 
+interface AreaDamageRow {
+  id: string;
+  fecha: string;
+  nombrePedido: string;
+  motivoDano: string;
+  cantidadDanada: number;
+}
+
+interface AreaHomeStats {
+  loading: boolean;
+  todayDamages: number;
+  monthDamages: number;
+  monthClosures: number;
+  lastClosureDate?: string;
+  recentDamages: AreaDamageRow[];
+}
+
+interface OnlinePresence {
+  userId?: string;
+  username?: string;
+  fullName?: string;
+  role?: string;
+  area?: string;
+  onlineAt?: string;
+}
+
 function normalizeAreaCode(area?: string): string {
-  const clean = String(area ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+  const clean = String(area ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  if (clean.startsWith('disen')) return 'diseno';
-  if (clean.startsWith('impre')) return 'impresion';
-  if (clean.startsWith('subli')) return 'sublimacion';
-  if (clean.startsWith('admin')) return 'administracion';
+  if (clean.startsWith("disen")) return "diseno";
+  if (clean.startsWith("impre")) return "impresion";
+  if (clean.startsWith("subli")) return "sublimacion";
+  if (clean.startsWith("alma")) return "almacen";
+  if (clean.startsWith("admin")) return "administracion";
   return clean;
 }
 
 function formatAreaLabel(area?: string): string {
   const code = normalizeAreaCode(area);
-  if (code === 'impresion') return 'IMPRESIÓN';
-  if (code === 'diseno') return 'DISEÑO';
-  if (code === 'sublimacion') return 'SUBLIMACIÓN';
-  if (code === 'administracion') return 'ADMINISTRACIÓN';
-  return String(area ?? '').toUpperCase();
+  if (code === "impresion") return "IMPRESIÓN";
+  if (code === "diseno") return "DISEÑO";
+  if (code === "sublimacion") return "SUBLIMACIÓN";
+  if (code === "almacen") return "ALMACÉN";
+  if (code === "administracion") return "ADMINISTRACIÓN";
+  return String(area ?? "").toUpperCase();
 }
 
 function getPeriodLabel(period: PeriodFilter): string {
-  if (period === 'hoy') return 'Hoy';
-  if (period === 'semana') return 'Semana';
-  if (period === 'mes') return 'Mes';
-  return 'Todo';
+  if (period === "hoy") return "Hoy";
+  if (period === "semana") return "Semana";
+  if (period === "mes") return "Mes";
+  return "Todo";
 }
 
 function getNextAreaReportClosingDate(): Date {
   const now = new Date();
-  const midMonthClose = new Date(now.getFullYear(), now.getMonth(), 15, 18, 0, 0, 0);
-  const endMonthClose = new Date(now.getFullYear(), now.getMonth() + 1, 0, 18, 0, 0, 0);
+  const midMonthClose = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    15,
+    18,
+    0,
+    0,
+    0,
+  );
+  const endMonthClose = new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    0,
+    18,
+    0,
+    0,
+    0,
+  );
 
   if (now < midMonthClose) return midMonthClose;
   if (now < endMonthClose) return endMonthClose;
@@ -71,31 +120,57 @@ function getNextAreaReportClosingDate(): Date {
 }
 
 function formatClosingDate(value: Date): string {
-  return new Intl.DateTimeFormat('es-HN', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
+  return new Intl.DateTimeFormat("es-HN", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   }).format(value);
+}
+
+function formatShortDate(value?: string): string {
+  if (!value) return "Sin registro";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  return new Intl.DateTimeFormat("es-HN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function getAreaInitial(area?: string): string {
   const code = normalizeAreaCode(area);
-  if (code === 'impresion') return 'I';
-  if (code === 'diseno') return 'D';
-  if (code === 'sublimacion') return 'S';
-  if (code === 'administracion') return 'A';
-  return String(area ?? 'N').trim().charAt(0).toUpperCase() || 'N';
+  if (code === "impresion") return "I";
+  if (code === "diseno") return "D";
+  if (code === "sublimacion") return "S";
+  if (code === "almacen") return "A";
+  if (code === "administracion") return "A";
+  return (
+    String(area ?? "N")
+      .trim()
+      .charAt(0)
+      .toUpperCase() || "N"
+  );
 }
 
-export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Element {
+export function Dashboard({
+  user,
+  onSignOut,
+}: DashboardProps): React.JSX.Element {
   const [section, setSection] = React.useState<Section>(() => {
     const stored = window.localStorage.getItem(DASHBOARD_SECTION_KEY);
-    if (stored === 'dashboard' || stored === 'pedidos' || stored === 'reportes' || stored === 'usuarios') {
+    if (
+      stored === "dashboard" ||
+      stored === "pedidos" ||
+      stored === "reportes" ||
+      stored === "usuarios"
+    ) {
       return stored;
     }
-    return 'dashboard';
+    return "dashboard";
   });
   const [signingOut, setSigningOut] = React.useState(false);
   const [loadingAdminStats, setLoadingAdminStats] = React.useState(false);
@@ -106,15 +181,31 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
     pendientes: 0,
   });
   const [areaStatsRows, setAreaStatsRows] = React.useState<AreaStatRow[]>([]);
-  const [periodFilter, setPeriodFilter] = React.useState<PeriodFilter>('hoy');
+  const [periodFilter, setPeriodFilter] = React.useState<PeriodFilter>("hoy");
   const [logoSrc, setLogoSrc] = React.useState(BRAND_LOGO_PRIMARY);
+  const [onlineUserIds, setOnlineUserIds] = React.useState<Set<string>>(
+    () => new Set([user.id]),
+  );
+  const [areaHomeStats, setAreaHomeStats] = React.useState<AreaHomeStats>({
+    loading: true,
+    todayDamages: 0,
+    monthDamages: 0,
+    monthClosures: 0,
+    recentDamages: [],
+  });
 
-  const isAdmin = user.role === 'admin';
+  const isAdmin = user.role === "admin";
   const areaScope = getAreaScope(user);
   const displayName = user.fullName || user.username;
-  const completionRate = adminStats.totalPedidos > 0
-    ? Math.min(100, Math.round((adminStats.totalReportes / adminStats.totalPedidos) * 100))
-    : 0;
+  const completionRate =
+    adminStats.totalPedidos > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (adminStats.totalReportes / adminStats.totalPedidos) * 100,
+          ),
+        )
+      : 0;
   const nextClosingLabel = React.useMemo(
     () => formatClosingDate(getNextAreaReportClosingDate()),
     [],
@@ -126,9 +217,55 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
 
   React.useEffect(() => {
     void updateLastSeen();
-    const interval = setInterval(() => { void updateLastSeen(); }, 30_000);
+    const interval = setInterval(() => {
+      void updateLastSeen();
+    }, 30_000);
     return () => clearInterval(interval);
   }, []);
+
+  React.useEffect(() => {
+    const channel = supabase.channel("online-users", {
+      config: { presence: { key: user.id } },
+    });
+
+    const syncOnlineUsers = (): void => {
+      const state = channel.presenceState() as Record<string, OnlinePresence[]>;
+      const nextOnline = new Set<string>();
+
+      for (const [presenceKey, presences] of Object.entries(state)) {
+        if (presenceKey) nextOnline.add(presenceKey);
+        for (const presence of presences) {
+          if (presence.userId) nextOnline.add(presence.userId);
+        }
+      }
+
+      nextOnline.add(user.id);
+      setOnlineUserIds(nextOnline);
+    };
+
+    channel
+      .on("presence", { event: "sync" }, syncOnlineUsers)
+      .on("presence", { event: "join" }, syncOnlineUsers)
+      .on("presence", { event: "leave" }, syncOnlineUsers)
+      .subscribe((status) => {
+        if (status !== "SUBSCRIBED") return;
+
+        void channel.track({
+          userId: user.id,
+          username: user.username,
+          fullName: user.fullName,
+          role: user.role,
+          area: user.area,
+          onlineAt: new Date().toISOString(),
+        });
+        syncOnlineUsers();
+      });
+
+    return () => {
+      void channel.untrack();
+      void supabase.removeChannel(channel);
+    };
+  }, [user.area, user.fullName, user.id, user.role, user.username]);
 
   React.useEffect(() => {
     if (!isAdmin) return;
@@ -137,14 +274,25 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
       setLoadingAdminStats(true);
 
       const [areasRes, pedidosRes, reportesRes] = await Promise.all([
-        supabase.from('areas').select('id,code,nombre'),
-        supabase.from('pedidos_danados').select('area_id,fecha,fecha_registro'),
-        supabase.from('reportes_generados').select('area,created_at'),
+        supabase.from("areas").select("id,code,nombre"),
+        supabase.from("pedidos_danados").select("area_id,fecha,fecha_registro"),
+        supabase.from("reportes_generados").select("area,created_at"),
       ]);
 
-      const areas = (areasRes.data ?? []) as Array<{ id: string; code: string; nombre: string }>;
-      const pedidosRaw = (pedidosRes.data ?? []) as Array<{ area_id?: string | null; fecha?: string | null; fecha_registro?: string | null }>;
-      const reportesRaw = (reportesRes.data ?? []) as Array<{ area?: string | null; created_at?: string | null }>;
+      const areas = (areasRes.data ?? []) as Array<{
+        id: string;
+        code: string;
+        nombre: string;
+      }>;
+      const pedidosRaw = (pedidosRes.data ?? []) as Array<{
+        area_id?: string | null;
+        fecha?: string | null;
+        fecha_registro?: string | null;
+      }>;
+      const reportesRaw = (reportesRes.data ?? []) as Array<{
+        area?: string | null;
+        created_at?: string | null;
+      }>;
 
       const now = new Date();
       const today = now.toISOString().slice(0, 10);
@@ -154,16 +302,18 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
       const monthStart = `${today.slice(0, 7)}-01`;
 
       const isInPeriod = (dateValue: string | null | undefined): boolean => {
-        if (!dateValue) return periodFilter === 'todo';
+        if (!dateValue) return periodFilter === "todo";
         const d = String(dateValue).slice(0, 10);
-        if (periodFilter === 'todo') return true;
-        if (periodFilter === 'hoy') return d === today;
-        if (periodFilter === 'semana') return d >= weekStart && d <= today;
-        if (periodFilter === 'mes') return d >= monthStart && d <= today;
+        if (periodFilter === "todo") return true;
+        if (periodFilter === "hoy") return d === today;
+        if (periodFilter === "semana") return d >= weekStart && d <= today;
+        if (periodFilter === "mes") return d >= monthStart && d <= today;
         return true;
       };
 
-      const pedidos = pedidosRaw.filter((p) => isInPeriod(p.fecha ?? p.fecha_registro));
+      const pedidos = pedidosRaw.filter((p) =>
+        isInPeriod(p.fecha ?? p.fecha_registro),
+      );
       const reportes = reportesRaw.filter((r) => isInPeriod(r.created_at));
 
       const areaIdToCode = new Map<string, string>();
@@ -178,15 +328,16 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
       const byArea = new Map<string, { pedidos: number; cierres: number }>();
 
       for (const pedido of pedidos) {
-        const areaCode = areaIdToCode.get(String(pedido.area_id ?? '')) ?? 'sin_area';
+        const areaCode =
+          areaIdToCode.get(String(pedido.area_id ?? "")) ?? "sin_area";
         const current = byArea.get(areaCode) ?? { pedidos: 0, cierres: 0 };
         current.pedidos += 1;
         byArea.set(areaCode, current);
       }
 
       for (const report of reportes) {
-        const areaCode = normalizeAreaCode(report.area ?? '');
-        if (!areaCode || areaCode === 'all') continue;
+        const areaCode = normalizeAreaCode(report.area ?? "");
+        if (!areaCode || areaCode === "all") continue;
         const current = byArea.get(areaCode) ?? { pedidos: 0, cierres: 0 };
         current.cierres += 1;
         byArea.set(areaCode, current);
@@ -203,7 +354,9 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
 
       const totalPedidos = pedidos.length;
       const totalReportes = reportes.length;
-      const areasActivas = rows.filter((row) => row.pedidos > 0 || row.cierres > 0).length;
+      const areasActivas = rows.filter(
+        (row) => row.pedidos > 0 || row.cierres > 0,
+      ).length;
       const pendientes = Math.max(totalPedidos - totalReportes, 0);
 
       setAreaStatsRows(rows);
@@ -221,11 +374,129 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
     };
   }, [isAdmin, periodFilter]);
 
+  React.useEffect(() => {
+    if (isAdmin) return;
+
+    let active = true;
+
+    async function loadAreaHomeStats(): Promise<void> {
+      setAreaHomeStats((current) => ({ ...current, loading: true }));
+
+      const areaCode = normalizeAreaCode(areaScope);
+      const today = new Date().toISOString().slice(0, 10);
+      const monthStart = `${today.slice(0, 7)}-01`;
+
+      const areasRes = await supabase
+        .from("areas")
+        .select("id,code")
+        .eq("code", areaCode)
+        .maybeSingle();
+
+      const areaId = String(areasRes.data?.id ?? "");
+      if (!areaId) {
+        if (active) {
+          setAreaHomeStats({
+            loading: false,
+            todayDamages: 0,
+            monthDamages: 0,
+            monthClosures: 0,
+            recentDamages: [],
+          });
+        }
+        return;
+      }
+
+      const [todayRes, monthRes, recentRes, closuresRes] = await Promise.all([
+        supabase
+          .from("pedidos_danados")
+          .select("id", { count: "exact", head: true })
+          .eq("area_id", areaId)
+          .gte("fecha", today),
+        supabase
+          .from("pedidos_danados")
+          .select("id", { count: "exact", head: true })
+          .eq("area_id", areaId)
+          .gte("fecha", monthStart),
+        supabase
+          .from("pedidos_danados")
+          .select(
+            "id,fecha,fecha_registro,nombre_pedido,motivo_dano,cantidad_danada",
+          )
+          .eq("area_id", areaId)
+          .order("fecha_registro", { ascending: false })
+          .limit(5),
+        supabase
+          .from("reportes_generados")
+          .select("id,created_at")
+          .eq("area", areaCode)
+          .gte("created_at", `${monthStart}T00:00:00`)
+          .order("created_at", { ascending: false }),
+      ]);
+
+      if (!active) return;
+
+      setAreaHomeStats({
+        loading: false,
+        todayDamages: todayRes.count ?? 0,
+        monthDamages: monthRes.count ?? 0,
+        monthClosures: closuresRes.data?.length ?? 0,
+        lastClosureDate: closuresRes.data?.[0]?.created_at
+          ? String(closuresRes.data[0].created_at)
+          : undefined,
+        recentDamages: (
+          (recentRes.data ?? []) as Array<{
+            id?: string;
+            fecha?: string | null;
+            fecha_registro?: string | null;
+            nombre_pedido?: string | null;
+            motivo_dano?: string | null;
+            cantidad_danada?: number | null;
+          }>
+        ).map((row) => ({
+          id: String(row.id ?? ""),
+          fecha: String(row.fecha ?? row.fecha_registro ?? ""),
+          nombrePedido: String(row.nombre_pedido ?? "Pedido sin nombre"),
+          motivoDano: String(row.motivo_dano ?? "Sin motivo"),
+          cantidadDanada: Number(row.cantidad_danada ?? 0),
+        })),
+      });
+    }
+
+    void loadAreaHomeStats();
+    const intervalId = window.setInterval(() => {
+      void loadAreaHomeStats();
+    }, 30_000);
+
+    const channel = supabase
+      .channel(`area-home-${normalizeAreaCode(areaScope)}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pedidos_danados" },
+        () => {
+          void loadAreaHomeStats();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "reportes_generados" },
+        () => {
+          void loadAreaHomeStats();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      void supabase.removeChannel(channel);
+    };
+  }, [areaScope, isAdmin]);
+
   const titleBySection: Record<Section, string> = {
-    dashboard: isAdmin ? 'Panel de Control' : 'Inicio de Área',
-    pedidos: 'Pedidos Dañados',
-    reportes: 'Reportes',
-    usuarios: 'Gestión de Usuarios',
+    dashboard: isAdmin ? "Panel de Control" : "Inicio de Área",
+    pedidos: "Pedidos Dañados",
+    reportes: "Reportes",
+    usuarios: "Gestión de Usuarios",
   };
 
   async function handleSignOut(): Promise<void> {
@@ -251,56 +522,106 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
             alt="Logo ESMARK Media"
             className="dashboard-sidebar-logo-image"
             onError={() => {
-              if (logoSrc !== BRAND_LOGO_FALLBACK) setLogoSrc(BRAND_LOGO_FALLBACK);
+              if (logoSrc !== BRAND_LOGO_FALLBACK)
+                setLogoSrc(BRAND_LOGO_FALLBACK);
             }}
           />
           <span className="dashboard-logo-text">ESMARK</span>
-          <span className="dashboard-logo-sub">{isAdmin ? 'Control' : 'Área'}</span>
+          <span className="dashboard-logo-sub">
+            {isAdmin ? "Control" : "Área"}
+          </span>
         </div>
         <nav className="dashboard-nav">
-          <NavItem icon={<GaugeIcon />} label={isAdmin ? 'Panel de control' : 'Inicio'} active={section === 'dashboard'} onClick={() => setSection('dashboard')} />
-          <NavItem icon={<AlertFileIcon />} label="Pedidos Dañados" active={section === 'pedidos'} onClick={() => setSection('pedidos')} />
-          <NavItem icon={<ReportIcon />} label="Reportes" active={section === 'reportes'} onClick={() => setSection('reportes')} />
-          {isAdmin && <NavItem icon={<UsersIcon />} label="Usuarios" active={section === 'usuarios'} onClick={() => setSection('usuarios')} />}
+          <NavItem
+            icon={<GaugeIcon />}
+            label={isAdmin ? "Panel de control" : "Inicio"}
+            active={section === "dashboard"}
+            onClick={() => setSection("dashboard")}
+          />
+          <NavItem
+            icon={<AlertFileIcon />}
+            label="Pedidos Dañados"
+            active={section === "pedidos"}
+            onClick={() => setSection("pedidos")}
+          />
+          <NavItem
+            icon={<ReportIcon />}
+            label="Reportes"
+            active={section === "reportes"}
+            onClick={() => setSection("reportes")}
+          />
+          {isAdmin && (
+            <NavItem
+              icon={<UsersIcon />}
+              label="Usuarios"
+              active={section === "usuarios"}
+              onClick={() => setSection("usuarios")}
+            />
+          )}
         </nav>
         <button
-          className={`dashboard-signout-btn${signingOut ? ' dashboard-signout-btn-disabled' : ''}`}
+          className={`dashboard-signout-btn${signingOut ? " dashboard-signout-btn-disabled" : ""}`}
           onClick={() => void handleSignOut()}
           disabled={signingOut}
         >
-          {signingOut ? 'Saliendo...' : 'Cerrar sesión'}
+          {signingOut ? "Saliendo..." : "Cerrar sesión"}
         </button>
       </aside>
 
       <main className="dashboard-main">
         <header className="dashboard-header">
           <div>
-            <span className="dashboard-header-kicker">{isAdmin ? 'Administración' : formatAreaLabel(areaScope)}</span>
-            <h1 className="dashboard-header-title">{titleBySection[section]}</h1>
+            <span className="dashboard-header-kicker">
+              {isAdmin ? "Administración" : formatAreaLabel(areaScope)}
+            </span>
+            <h1 className="dashboard-header-title">
+              {titleBySection[section]}
+            </h1>
           </div>
           <span className="dashboard-user-badge">
-            {displayName} · {isAdmin ? 'Administrador' : `Área ${formatAreaLabel(areaScope)}`}
+            {displayName} ·{" "}
+            {isAdmin ? "Administrador" : `Área ${formatAreaLabel(areaScope)}`}
           </span>
         </header>
 
-        {section === 'dashboard' && isAdmin && (
+        {section === "dashboard" && isAdmin && (
           <>
             <section className="dashboard-admin-hero">
               <div className="dashboard-admin-hero-copy">
-                <span className="dashboard-admin-kicker">Operación en tiempo real</span>
-                <h2 className="dashboard-admin-title">Resumen ejecutivo de incidencias</h2>
+                <span className="dashboard-admin-kicker">
+                  Operación en tiempo real
+                </span>
+                <h2 className="dashboard-admin-title">
+                  Resumen ejecutivo de incidencias
+                </h2>
                 <p className="dashboard-admin-subtitle">
-                  Controla pedidos dañados, cierres y actividad por área desde una vista compacta y lista para decisiones.
+                  Controla pedidos dañados, cierres y actividad por área desde
+                  una vista compacta y lista para decisiones.
                 </p>
               </div>
               <div className="dashboard-admin-hero-side">
-                <div className="dashboard-admin-ring" style={{ '--ring-progress': `${completionRate}%` } as React.CSSProperties}>
-                  <span>{loadingAdminStats ? '...' : `${completionRate}%`}</span>
+                <div
+                  className="dashboard-admin-ring"
+                  style={
+                    {
+                      "--ring-progress": `${completionRate}%`,
+                    } as React.CSSProperties
+                  }
+                >
+                  <span>
+                    {loadingAdminStats ? "..." : `${completionRate}%`}
+                  </span>
                 </div>
                 <div>
-                  <span className="dashboard-admin-side-label">Cobertura de cierre</span>
-                  <strong className="dashboard-admin-side-value">{adminStats.totalReportes}/{adminStats.totalPedidos}</strong>
-                  <p className="dashboard-admin-side-copy">Reportes generados contra pedidos del periodo.</p>
+                  <span className="dashboard-admin-side-label">
+                    Cobertura de cierre
+                  </span>
+                  <strong className="dashboard-admin-side-value">
+                    {adminStats.totalReportes}/{adminStats.totalPedidos}
+                  </strong>
+                  <p className="dashboard-admin-side-copy">
+                    Reportes generados contra pedidos del periodo.
+                  </p>
                   <div className="dashboard-next-close">
                     <span>Próximo cierre por área</span>
                     <strong>{nextClosingLabel}</strong>
@@ -312,42 +633,90 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
             <div className="dashboard-admin-toolbar">
               <div className="dashboard-period-filter-row">
                 <span className="dashboard-period-filter-label">Periodo</span>
-                {(['hoy', 'semana', 'mes', 'todo'] as PeriodFilter[]).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    className={`dashboard-period-filter-btn${periodFilter === option ? ' dashboard-period-filter-btn-active' : ''}`}
-                    onClick={() => setPeriodFilter(option)}
-                  >
-                    {getPeriodLabel(option)}
-                  </button>
-                ))}
+                {(["hoy", "semana", "mes", "todo"] as PeriodFilter[]).map(
+                  (option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      className={`dashboard-period-filter-btn${periodFilter === option ? " dashboard-period-filter-btn-active" : ""}`}
+                      onClick={() => setPeriodFilter(option)}
+                    >
+                      {getPeriodLabel(option)}
+                    </button>
+                  ),
+                )}
               </div>
               <div className="dashboard-admin-actions">
-                <button type="button" className="dashboard-secondary-action" onClick={() => setSection('reportes')}>
+                <button
+                  type="button"
+                  className="dashboard-secondary-action"
+                  onClick={() => setSection("reportes")}
+                >
                   Ver reportes
                 </button>
-                <button type="button" className="dashboard-primary-action" onClick={() => setSection('pedidos')}>
+                <button
+                  type="button"
+                  className="dashboard-primary-action"
+                  onClick={() => setSection("pedidos")}
+                >
                   Registrar daño
                 </button>
               </div>
             </div>
 
             <div className="dashboard-stats-grid">
-              <StatCard title="Pedidos dañados" value={loadingAdminStats ? '...' : String(adminStats.totalPedidos)} tone="red" icon={<DamageIcon />} detail="Incidencias registradas" />
-              <StatCard title="Reportes generados" value={loadingAdminStats ? '...' : String(adminStats.totalReportes)} tone="blue" icon={<ReportIcon />} detail="Cierres guardados" />
-              <StatCard title="Áreas activas" value={loadingAdminStats ? '...' : String(adminStats.areasActivas)} tone="green" icon={<AreasIcon />} detail="Con movimiento" />
-              <StatCard title="Pendientes" value={loadingAdminStats ? '...' : String(adminStats.pendientes)} tone="orange" icon={<PendingIcon />} detail="Sin cierre asociado" />
+              <StatCard
+                title="Pedidos dañados"
+                value={
+                  loadingAdminStats ? "..." : String(adminStats.totalPedidos)
+                }
+                tone="red"
+                icon={<DamageIcon />}
+                detail="Incidencias registradas"
+              />
+              <StatCard
+                title="Reportes generados"
+                value={
+                  loadingAdminStats ? "..." : String(adminStats.totalReportes)
+                }
+                tone="blue"
+                icon={<ReportIcon />}
+                detail="Cierres guardados"
+              />
+              <StatCard
+                title="Áreas activas"
+                value={
+                  loadingAdminStats ? "..." : String(adminStats.areasActivas)
+                }
+                tone="green"
+                icon={<AreasIcon />}
+                detail="Con movimiento"
+              />
+              <StatCard
+                title="Pendientes"
+                value={
+                  loadingAdminStats ? "..." : String(adminStats.pendientes)
+                }
+                tone="orange"
+                icon={<PendingIcon />}
+                detail="Sin cierre asociado"
+              />
             </div>
 
             <div className="dashboard-admin-grid">
               <section className="dashboard-area-stats-section">
                 <div className="dashboard-section-heading">
                   <div>
-                    <h3 className="dashboard-area-stats-title">Actividad por área</h3>
-                    <p className="dashboard-section-subtitle">Comparativo de pedidos y cierres del periodo.</p>
+                    <h3 className="dashboard-area-stats-title">
+                      Actividad por área
+                    </h3>
+                    <p className="dashboard-section-subtitle">
+                      Comparativo de pedidos y cierres del periodo.
+                    </p>
                   </div>
-                  <span className="dashboard-section-count">{areaStatsRows.length} áreas</span>
+                  <span className="dashboard-section-count">
+                    {areaStatsRows.length} áreas
+                  </span>
                 </div>
                 <table className="dashboard-area-stats-table">
                   <thead>
@@ -360,20 +729,37 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
                   </thead>
                   <tbody>
                     {areaStatsRows.map((row) => {
-                      const rowRate = row.pedidos > 0 ? Math.min(100, Math.round((row.cierres / row.pedidos) * 100)) : 0;
+                      const rowRate =
+                        row.pedidos > 0
+                          ? Math.min(
+                              100,
+                              Math.round((row.cierres / row.pedidos) * 100),
+                            )
+                          : 0;
                       return (
                         <tr key={row.areaCode}>
                           <td className="dashboard-area-stats-td">
-                            <span className={`dashboard-area-chip area-${normalizeAreaCode(row.areaCode)}`}>
-                              <span className="dashboard-area-chip-mark">{getAreaInitial(row.areaCode)}</span>
+                            <span
+                              className={`dashboard-area-chip area-${normalizeAreaCode(row.areaCode)}`}
+                            >
+                              <span className="dashboard-area-chip-mark">
+                                {getAreaInitial(row.areaCode)}
+                              </span>
                               {formatAreaLabel(row.areaName)}
                             </span>
                           </td>
-                          <td className="dashboard-area-stats-td dashboard-number-cell">{row.pedidos}</td>
-                          <td className="dashboard-area-stats-td dashboard-number-cell">{row.cierres}</td>
+                          <td className="dashboard-area-stats-td dashboard-number-cell">
+                            {row.pedidos}
+                          </td>
+                          <td className="dashboard-area-stats-td dashboard-number-cell">
+                            {row.cierres}
+                          </td>
                           <td className="dashboard-area-stats-td">
                             <div className="dashboard-table-progress">
-                              <div className="dashboard-table-progress-fill" style={{ width: `${rowRate}%` }} />
+                              <div
+                                className="dashboard-table-progress-fill"
+                                style={{ width: `${rowRate}%` }}
+                              />
                             </div>
                           </td>
                         </tr>
@@ -381,7 +767,9 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
                     })}
                     {areaStatsRows.length === 0 && (
                       <tr>
-                        <td className="dashboard-area-stats-td" colSpan={4}>Sin actividad registrada por área.</td>
+                        <td className="dashboard-area-stats-td" colSpan={4}>
+                          Sin actividad registrada por área.
+                        </td>
                       </tr>
                     )}
                   </tbody>
@@ -391,8 +779,12 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
               <aside className="dashboard-control-panel">
                 <div className="dashboard-section-heading">
                   <div>
-                    <h3 className="dashboard-area-stats-title">Accesos de control</h3>
-                    <p className="dashboard-section-subtitle">Operaciones frecuentes de administración.</p>
+                    <h3 className="dashboard-area-stats-title">
+                      Accesos de control
+                    </h3>
+                    <p className="dashboard-section-subtitle">
+                      Operaciones frecuentes de administración.
+                    </p>
                   </div>
                 </div>
                 <ControlLink
@@ -400,41 +792,70 @@ export function Dashboard({ user, onSignOut }: DashboardProps): React.JSX.Elemen
                   icon={<UsersIcon />}
                   label="Usuarios"
                   title="Gestionar accesos"
-                  onClick={() => setSection('usuarios')}
+                  onClick={() => setSection("usuarios")}
                 />
                 <ControlLink
                   tone="reports"
                   icon={<ReportIcon />}
                   label="Reportes"
                   title="Editar o eliminar registros"
-                  onClick={() => setSection('reportes')}
+                  onClick={() => setSection("reportes")}
                 />
                 <ControlLink
                   tone="trello"
                   icon={<BoardIcon />}
                   label="Trello"
                   title="Vincular tarjetas"
-                  onClick={() => setSection('pedidos')}
+                  onClick={() => setSection("pedidos")}
                 />
               </aside>
             </div>
           </>
         )}
 
-        {section === 'dashboard' && !isAdmin && (
+        {section === "dashboard" && !isAdmin && (
           <AreaHome
             areaScope={areaScope}
-            onRegisterDamage={() => setSection('pedidos')}
-            onOpenReports={() => setSection('reportes')}
+            stats={areaHomeStats}
+            nextClosingLabel={nextClosingLabel}
+            onRegisterDamage={() => setSection("pedidos")}
+            onOpenReports={() => setSection("reportes")}
           />
         )}
 
-        {section === 'pedidos' && <PedidosDanadosScreen user={user} />}
-        {section === 'reportes' && <ReportesScreen user={user} />}
-        {section === 'usuarios' && isAdmin && (
-          <UserManagement currentUserId={user.id} currentUsername={user.username} />
+        {section === "pedidos" && <PedidosDanadosScreen user={user} />}
+        {section === "reportes" && <ReportesScreen user={user} />}
+        {section === "usuarios" && isAdmin && (
+          <UserManagement
+            currentUserId={user.id}
+            currentUsername={user.username}
+            onlineUserIds={onlineUserIds}
+          />
         )}
       </main>
+    </div>
+  );
+}
+
+function AreaWidget({
+  title,
+  value,
+  detail,
+  tone,
+  icon,
+}: {
+  title: string;
+  value: string;
+  detail: string;
+  tone: "blue" | "red" | "green" | "orange";
+  icon: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className={`dashboard-area-widget widget-${tone}`}>
+      <span className="dashboard-area-widget-icon">{icon}</span>
+      <span className="dashboard-area-widget-title">{title}</span>
+      <strong className="dashboard-area-widget-value">{value}</strong>
+      <span className="dashboard-area-widget-detail">{detail}</span>
     </div>
   );
 }
@@ -451,7 +872,11 @@ function NavItem({
   onClick: () => void;
 }): React.JSX.Element {
   return (
-    <button type="button" className={`dashboard-nav-item${active ? ' dashboard-nav-item-active' : ''}`} onClick={onClick}>
+    <button
+      type="button"
+      className={`dashboard-nav-item${active ? " dashboard-nav-item-active" : ""}`}
+      onClick={onClick}
+    >
       <span className="dashboard-nav-icon">{icon}</span>
       {label}
     </button>
@@ -467,14 +892,16 @@ function StatCard({
 }: {
   title: string;
   value: string;
-  tone: 'red' | 'blue' | 'green' | 'orange';
+  tone: "red" | "blue" | "green" | "orange";
   icon: React.ReactNode;
   detail?: string;
 }): React.JSX.Element {
   return (
     <div className={`dashboard-stat-card border-${tone}`}>
       <div className="dashboard-stat-topline">
-        <span className="dashboard-stat-icon" aria-hidden="true">{icon}</span>
+        <span className="dashboard-stat-icon" aria-hidden="true">
+          {icon}
+        </span>
         <span className="dashboard-stat-value">{value}</span>
       </div>
       <span className="dashboard-stat-label">{title}</span>
@@ -520,15 +947,21 @@ function ControlLink({
   title,
   onClick,
 }: {
-  tone: 'users' | 'reports' | 'trello';
+  tone: "users" | "reports" | "trello";
   icon: React.ReactNode;
   label: string;
   title: string;
   onClick: () => void;
 }): React.JSX.Element {
   return (
-    <button type="button" className={`dashboard-control-link control-${tone}`} onClick={onClick}>
-      <span className="dashboard-control-icon" aria-hidden="true">{icon}</span>
+    <button
+      type="button"
+      className={`dashboard-control-link control-${tone}`}
+      onClick={onClick}
+    >
+      <span className="dashboard-control-icon" aria-hidden="true">
+        {icon}
+      </span>
       <span>{label}</span>
       <strong>{title}</strong>
     </button>
@@ -596,46 +1029,195 @@ function BoardIcon(): React.JSX.Element {
 
 function AreaHome({
   areaScope,
+  stats,
+  nextClosingLabel,
   onRegisterDamage,
   onOpenReports,
 }: {
   areaScope: string;
+  stats: AreaHomeStats;
+  nextClosingLabel: string;
   onRegisterDamage: () => void;
   onOpenReports: () => void;
 }): React.JSX.Element {
+  const areaCode = normalizeAreaCode(areaScope);
+  const progress =
+    stats.monthDamages > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (stats.monthClosures / Math.max(stats.monthDamages, 1)) * 100,
+          ),
+        )
+      : 0;
+  const statusLabel =
+    stats.monthClosures > 0 ? "Cierre registrado" : "Cierre pendiente";
+
   return (
-    <section className="dashboard-area-hero">
-      <div className="dashboard-area-hero-top">
-        <div>
-          <div className="dashboard-area-kicker">Inicio de Área</div>
-          <h2 className="dashboard-area-title">Centro de trabajo para {formatAreaLabel(areaScope)}</h2>
-          <p className="dashboard-area-subtitle">
-            Registro rapido, reportes claros y seguimiento de incidencias desde una sola vista.
-          </p>
+    <div className="dashboard-area-workspace">
+      <section className={`dashboard-area-hero area-home-${areaCode}`}>
+        <div className="dashboard-area-hero-top">
+          <div>
+            <div className="dashboard-area-kicker">Inicio de Área</div>
+            <h2 className="dashboard-area-title">
+              {formatAreaLabel(areaScope)}
+            </h2>
+            <p className="dashboard-area-subtitle">
+              Monitorea incidencias, registra danos y prepara el cierre del
+              periodo desde una vista compacta.
+            </p>
+          </div>
+          <div className="dashboard-area-badge">
+            <span className="dashboard-area-badge-mark">
+              {getAreaInitial(areaScope)}
+            </span>
+            <span>{statusLabel}</span>
+          </div>
         </div>
-        <div className="dashboard-area-badge">{formatAreaLabel(areaScope)}</div>
+
+        <div className="dashboard-area-actions">
+          <button
+            type="button"
+            className="dashboard-area-primary-action"
+            onClick={onRegisterDamage}
+          >
+            Registrar daño
+          </button>
+          <button
+            type="button"
+            className="dashboard-area-secondary-action"
+            onClick={onOpenReports}
+          >
+            Ver reportes
+          </button>
+        </div>
+
+        <div className="dashboard-area-clean-panel">
+          <div className="dashboard-area-clean-item">
+            <strong className="dashboard-area-clean-label">Enfoque</strong>
+            <span className="dashboard-area-clean-text">
+              Capturar daños de forma ordenada y verificable.
+            </span>
+          </div>
+          <div className="dashboard-area-clean-divider" />
+          <div className="dashboard-area-clean-item">
+            <strong className="dashboard-area-clean-label">Control</strong>
+            <span className="dashboard-area-clean-text">
+              Mantener trazabilidad por responsable y por tarjeta.
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <div className="dashboard-area-widget-grid">
+        <AreaWidget
+          title="Danos hoy"
+          value={stats.loading ? "..." : String(stats.todayDamages)}
+          detail="Registros del dia"
+          tone="blue"
+          icon={<DamageIcon />}
+        />
+        <AreaWidget
+          title="Danos del mes"
+          value={stats.loading ? "..." : String(stats.monthDamages)}
+          detail="Acumulado actual"
+          tone="red"
+          icon={<AlertFileIcon />}
+        />
+        <AreaWidget
+          title="Cierres del mes"
+          value={stats.loading ? "..." : String(stats.monthClosures)}
+          detail={
+            stats.lastClosureDate
+              ? `Ultimo: ${formatShortDate(stats.lastClosureDate)}`
+              : "Aun sin cierre"
+          }
+          tone="green"
+          icon={<ReportIcon />}
+        />
+        <AreaWidget
+          title="Proximo cierre"
+          value={nextClosingLabel.split(",")[0] ?? nextClosingLabel}
+          detail={nextClosingLabel}
+          tone="orange"
+          icon={<PendingIcon />}
+        />
       </div>
 
-      <div className="dashboard-area-actions">
-        <button type="button" className="dashboard-area-primary-action" onClick={onRegisterDamage}>
-          Registrar daño
-        </button>
-        <button type="button" className="dashboard-area-secondary-action" onClick={onOpenReports}>
-          Ver reportes
-        </button>
-      </div>
+      <div className="dashboard-area-layout">
+        <section className="dashboard-area-panel">
+          <div className="dashboard-section-heading">
+            <div>
+              <h3 className="dashboard-area-stats-title">Actividad reciente</h3>
+              <p className="dashboard-section-subtitle">
+                Ultimos registros capturados por tu area.
+              </p>
+            </div>
+            <span className="dashboard-section-count">
+              {stats.recentDamages.length} visibles
+            </span>
+          </div>
 
-      <div className="dashboard-area-clean-panel">
-        <div className="dashboard-area-clean-item">
-          <strong className="dashboard-area-clean-label">Enfoque</strong>
-          <span className="dashboard-area-clean-text">Capturar daños de forma ordenada y verificable.</span>
-        </div>
-        <div className="dashboard-area-clean-divider" />
-        <div className="dashboard-area-clean-item">
-          <strong className="dashboard-area-clean-label">Control</strong>
-          <span className="dashboard-area-clean-text">Mantener trazabilidad por responsable y por tarjeta.</span>
-        </div>
+          <div className="dashboard-area-timeline">
+            {stats.recentDamages.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                className="dashboard-area-timeline-item"
+                onClick={onOpenReports}
+              >
+                <span className="dashboard-area-timeline-date">
+                  {formatShortDate(row.fecha)}
+                </span>
+                <strong>{row.nombrePedido}</strong>
+                <span>{row.motivoDano}</span>
+                <em>{row.cantidadDanada} und.</em>
+              </button>
+            ))}
+            {!stats.loading && stats.recentDamages.length === 0 && (
+              <div className="dashboard-area-empty-state">
+                No hay danos registrados recientemente para esta area.
+              </div>
+            )}
+            {stats.loading && (
+              <div className="dashboard-area-empty-state">
+                Cargando actividad...
+              </div>
+            )}
+          </div>
+        </section>
+
+        <aside className="dashboard-area-panel dashboard-area-focus-panel">
+          <div className="dashboard-area-progress-head">
+            <span>Preparacion del cierre</span>
+            <strong>{progress}%</strong>
+          </div>
+          <div className="dashboard-progress-track">
+            <div
+              className="dashboard-progress-fill"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <div className="dashboard-area-focus-list">
+            <div>
+              <strong>Captura ordenada</strong>
+              <span>Registra danos con pedido, cantidad y motivo claro.</span>
+            </div>
+            <div>
+              <strong>Revision continua</strong>
+              <span>
+                Consulta reportes antes del cierre para detectar faltantes.
+              </span>
+            </div>
+            <div>
+              <strong>Trazabilidad</strong>
+              <span>
+                Conserva relacion con Trello cuando exista tarjeta vinculada.
+              </span>
+            </div>
+          </div>
+        </aside>
       </div>
-    </section>
+    </div>
   );
 }
