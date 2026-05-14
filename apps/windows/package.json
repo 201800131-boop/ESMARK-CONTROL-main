@@ -1,6 +1,6 @@
 {
   "name": "@esmark/windows",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "ESMARK Control desktop app",
   "author": "ESMARK",
   "private": true,
@@ -51,17 +51,26 @@
     "win": {
       "target": "nsis",
       "icon": "public/app-icon.ico",
-      "publisherName": [
-        "ESMARK"
-      ],
-      "signAndEditExecutable": false
+      "certificateFile": null,
+      "certificatePassword": null,
+      "publisherName": "ESMARK",
+      "signAndEditExecutable": false,
+      "signingHashAlgorithms": ["sha256"],
+      "sign": null
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "installerIcon": "public/app-icon.ico",
       "uninstallerIcon": "public/app-icon.ico",
-      "installerHeaderIcon": "public/app-icon.ico"
+      "installerHeaderIcon": "public/app-icon.ico",
+      "installerSidebar": "public/app-icon.ico",
+      "installerHeader": "public/app-icon.ico",
+      "differentialPackage": true,
+      "deleteAppFolderOnUninstall": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ESMARK Control"
     },
     "publish": {
       "provider": "github",
