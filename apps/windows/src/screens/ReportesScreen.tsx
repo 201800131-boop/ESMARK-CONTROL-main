@@ -35,6 +35,11 @@ interface AreaOption {
   label: string;
 }
 
+interface ClosureGroup {
+  date: string;
+  rows: AnyRow[];
+}
+
 function normalizeLookupCard(item: Record<string, unknown>): TrelloLookupCard {
   const descValue =
     typeof item.desc === "string"
@@ -136,6 +141,18 @@ function exportReportToExcel(
   title: string,
   subtitle: string,
 ): void {
+  const worksheet = createReportWorksheet(rows, areaNameById, title, subtitle);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Reporte");
+  downloadWorkbook(workbook, filename);
+}
+
+function createReportWorksheet(
+  rows: AnyRow[],
+  areaNameById: Record<string, string>,
+  title: string,
+  subtitle: string,
+): AnyRow {
   const bodyRows = toReportRows(rows, areaNameById);
   const headerRowIndex = 3;
   const worksheet = XLSX.utils.aoa_to_sheet([
@@ -193,9 +210,10 @@ function exportReportToExcel(
     },
   ];
 
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Reporte");
+  return worksheet;
+}
 
+function downloadWorkbook(workbook: AnyRow, filename: string): void {
   const workbookData = XLSX.write(workbook, {
     bookType: "xlsx",
     type: "array",
@@ -211,6 +229,28 @@ function exportReportToExcel(
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function sanitizeSheetName(value: string): string {
+  const clean = value.replace(/[\\/?*[\]:]/g, " ").trim();
+  return (clean || "Hoja").slice(0, 31);
+}
+
+function groupClosuresByDate(rows: AnyRow[]): ClosureGroup[] {
+  const map = new Map<string, AnyRow[]>();
+  for (const row of rows) {
+    const date = String(row.created_at ?? "").slice(0, 10) || "Sin fecha";
+    map.set(date, [...(map.get(date) ?? []), row]);
+  }
+
+  return Array.from(map.entries())
+    .map(([date, groupRows]) => ({
+      date,
+      rows: groupRows.sort((a, b) =>
+        String(a.area ?? "").localeCompare(String(b.area ?? "")),
+      ),
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date));
 }
 
 function humanizeKey(key: string): string {
@@ -326,6 +366,8 @@ export function ReportesScreen({ user, historyOnly = false }: Props): React.JSX.
   const [areaOptions, setAreaOptions] = React.useState<AreaOption[]>([]);
   const [userAreaId, setUserAreaId] = React.useState<string | null>(null);
   const [selectedRow, setSelectedRow] = React.useState<AnyRow | null>(null);
+  const [selectedClosureGroup, setSelectedClosureGroup] =
+    React.useState<ClosureGroup | null>(null);
   const [editingRow, setEditingRow] = React.useState<AnyRow | null>(null);
   const [editForm, setEditForm] = React.useState<ReportEditForm>({
     fecha: "",
@@ -357,6 +399,10 @@ export function ReportesScreen({ user, historyOnly = false }: Props): React.JSX.
   const [area, setArea] = React.useState("all");
   const latestClosureCreatedAt = React.useMemo(
     () => getLatestClosureCreatedAt(closureRows),
+    [closureRows],
+  );
+  const closureGroups = React.useMemo(
+    () => groupClosuresByDate(closureRows),
     [closureRows],
   );
 
@@ -1133,6 +1179,96 @@ export function ReportesScreen({ user, historyOnly = false }: Props): React.JSX.
     setDownloadingClosureId(null);
   }
 
+  async function handleDownloadClosureGroup(group: ClosureGroup): Promise<void> {
+    const groupKey = `group-${group.date}`;
+    const dates = group.rows.flatMap((row) => [
+      String(row.fecha_inicio ?? "").slice(0, 10),
+      String(row.fecha_fin ?? "").slice(0, 10),
+    ]).filter(Boolean);
+    const from = dates.sort((a, b) => a.localeCompare(b))[0];
+    const to = dates.sort((a, b) => b.localeCompare(a))[0];
+
+    if (!from || !to) {
+      setError("Este grupo no tiene rango de fechas para descargar.");
+      return;
+    }
+
+    setDownloadingClosureId(groupKey);
+    setError(null);
+
+    const { data, error: qErr } = await supabase
+      .from("pedidos_danados")
+      .select(
+        "id,fecha,fecha_registro,area_id,nombre_pedido,cantidad_danada,motivo_dano,tipo_trabajo,tipo_dano,persona_dano,observacion",
+      )
+      .order("fecha_registro", { ascending: false })
+      .limit(5000);
+
+    if (qErr) {
+      setError(qErr.message);
+      setDownloadingClosureId(null);
+      return;
+    }
+
+    const allRows = ((data ?? []) as unknown as AnyRow[]).filter((item) => {
+      const raw = item.fecha ?? item.fecha_registro;
+      if (!raw) return true;
+      const normalized = String(raw).slice(0, 10);
+      return normalized >= from && normalized <= to;
+    });
+
+    const workbook = XLSX.utils.book_new();
+    const summaryRows = group.rows.map((row) => [
+      String(row.created_at ?? "").slice(0, 10),
+      formatAreaLabel(String(row.area ?? "-")),
+      String(row.fecha_inicio ?? "-"),
+      String(row.fecha_fin ?? "-"),
+      String(row.generado_por_nombre ?? row.generado_por ?? "-"),
+    ]);
+    const summarySheet = XLSX.utils.aoa_to_sheet([
+      ["Historial de Cierres - ESMARK Control"],
+      [`Fecha de cierre: ${group.date} | Areas: ${group.rows.length}`],
+      [],
+      ["Fecha de cierre", "Area", "Desde", "Hasta", "Generado por"],
+      ...summaryRows,
+    ]);
+    summarySheet["!cols"] = [
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 28 },
+    ];
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen");
+
+    for (const closure of group.rows) {
+      const areaCode = normalizeAreaCode(String(closure.area ?? ""));
+      const areaId = areaIdByCode[areaCode];
+      const areaLabel =
+        areaOptions.find((option) => option.code === areaCode)?.label ??
+        formatAreaLabel(areaCode);
+      const areaRows = areaId
+        ? allRows.filter((item) => String(item.area_id ?? "") === areaId)
+        : [];
+      const sheet = createReportWorksheet(
+        areaRows,
+        areaNameById,
+        "Reporte de Pedidos Danados - ESMARK Control",
+        `Area: ${areaLabel} | Rango: ${from} a ${to} | Registros: ${areaRows.length}`,
+      );
+      XLSX.utils.book_append_sheet(
+        workbook,
+        sheet,
+        sanitizeSheetName(areaLabel),
+      );
+    }
+
+    downloadWorkbook(workbook, `cierres_${group.date}.xlsx`);
+    setSuccess("Excel de cierres descargado.");
+    window.setTimeout(() => setSuccess(null), 3000);
+    setDownloadingClosureId(null);
+  }
+
   if (historyOnly) {
     return (
       <div>
@@ -1146,7 +1282,8 @@ export function ReportesScreen({ user, historyOnly = false }: Props): React.JSX.
             </p>
           </div>
           <div style={styles.heroStats}>
-            <span style={styles.heroBadge}>{closureRows.length} cierres</span>
+            <span style={styles.heroBadge}>{closureGroups.length} fechas</span>
+            <span style={styles.heroBadge}>{closureRows.length} areas</span>
           </div>
         </div>
 
@@ -1159,57 +1296,67 @@ export function ReportesScreen({ user, historyOnly = false }: Props): React.JSX.
               <thead>
                 <tr>
                   <th style={styles.th}>Fecha de cierre</th>
-                  <th style={styles.th}>Area</th>
-                  <th style={styles.th}>Desde</th>
-                  <th style={styles.th}>Hasta</th>
+                  <th style={styles.th}>Areas incluidas</th>
+                  <th style={styles.th}>Rango</th>
                   <th style={styles.th}>Generado por</th>
                   <th style={styles.th}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {closureRows.map((r, idx) => (
-                  <tr key={`${String(r.id ?? idx)}-closure-history-${idx}`}>
-                    <td style={styles.td}>
-                      {String(r.created_at ?? "-").slice(0, 10)}
-                    </td>
-                    <td style={styles.td}>
-                      {formatAreaLabel(String(r.area ?? "-"))}
-                    </td>
-                    <td style={styles.td}>{String(r.fecha_inicio ?? "-")}</td>
-                    <td style={styles.td}>{String(r.fecha_fin ?? "-")}</td>
-                    <td style={styles.td}>
-                      {String(r.generado_por_nombre ?? r.generado_por ?? "-")}
-                    </td>
+                {closureGroups.map((group) => {
+                  const from = group.rows
+                    .map((row) => String(row.fecha_inicio ?? "").slice(0, 10))
+                    .filter(Boolean)
+                    .sort((a, b) => a.localeCompare(b))[0] ?? "-";
+                  const to = group.rows
+                    .map((row) => String(row.fecha_fin ?? "").slice(0, 10))
+                    .filter(Boolean)
+                    .sort((a, b) => b.localeCompare(a))[0] ?? "-";
+                  const areas = group.rows
+                    .map((row) => formatAreaLabel(String(row.area ?? "")))
+                    .join(", ");
+                  const generatedBy = String(
+                    group.rows[0]?.generado_por_nombre ??
+                      group.rows[0]?.generado_por ??
+                      "-",
+                  );
+                  return (
+                  <tr key={`closure-group-${group.date}`}>
+                    <td style={styles.td}>{group.date}</td>
+                    <td style={styles.td}>{areas}</td>
+                    <td style={styles.td}>{from} - {to}</td>
+                    <td style={styles.td}>{generatedBy}</td>
                     <td style={styles.td}>
                       <div style={styles.rowActions}>
                         <button
                           type="button"
                           style={styles.inlineBtn}
-                          onClick={() => void handleDownloadClosure(r)}
-                          disabled={
-                            mutatingReport ||
-                            downloadingClosureId === String(r.id ?? "")
-                          }
+                          onClick={() => setSelectedClosureGroup(group)}
+                          disabled={mutatingReport}
                         >
-                          {downloadingClosureId === String(r.id ?? "")
-                            ? "Descargando..."
-                            : "Descargar"}
+                          Ver detalle
                         </button>
                         <button
                           type="button"
-                          style={styles.inlineDangerBtn}
-                          onClick={() => void handleDeleteClosure(r)}
-                          disabled={mutatingReport}
+                          style={styles.inlineBtn}
+                          onClick={() => void handleDownloadClosureGroup(group)}
+                          disabled={
+                            mutatingReport ||
+                            downloadingClosureId === `group-${group.date}`
+                          }
                         >
-                          Eliminar
+                          {downloadingClosureId === `group-${group.date}`
+                            ? "Descargando..."
+                            : "Descargar"}
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))}
-                {closureRows.length === 0 && (
+                  );
+                })}
+                {closureGroups.length === 0 && (
                   <tr>
-                    <td style={styles.td} colSpan={6}>
+                    <td style={styles.td} colSpan={5}>
                       Aun no hay cierres manuales registrados.
                     </td>
                   </tr>
@@ -1218,6 +1365,80 @@ export function ReportesScreen({ user, historyOnly = false }: Props): React.JSX.
             </table>
           )}
         </div>
+
+        {selectedClosureGroup && (
+          <div style={styles.modalBackdrop}>
+            <div style={styles.modalCard}>
+              <div style={styles.modalHeader}>
+                <div>
+                  <h3 style={styles.modalTitle}>
+                    Cierres del {selectedClosureGroup.date}
+                  </h3>
+                  <p style={styles.modalSubtitle}>
+                    Areas incluidas en este cierre manual.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  style={styles.modalCloseBtn}
+                  onClick={() => setSelectedClosureGroup(null)}
+                >
+                  Cerrar
+                </button>
+              </div>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Area</th>
+                    <th style={styles.th}>Desde</th>
+                    <th style={styles.th}>Hasta</th>
+                    <th style={styles.th}>Generado por</th>
+                    <th style={styles.th}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedClosureGroup.rows.map((row, idx) => (
+                    <tr key={`${String(row.id ?? idx)}-closure-detail`}>
+                      <td style={styles.td}>
+                        {formatAreaLabel(String(row.area ?? "-"))}
+                      </td>
+                      <td style={styles.td}>{String(row.fecha_inicio ?? "-")}</td>
+                      <td style={styles.td}>{String(row.fecha_fin ?? "-")}</td>
+                      <td style={styles.td}>
+                        {String(row.generado_por_nombre ?? row.generado_por ?? "-")}
+                      </td>
+                      <td style={styles.td}>
+                        <div style={styles.rowActions}>
+                          <button
+                            type="button"
+                            style={styles.inlineBtn}
+                            onClick={() => void handleDownloadClosure(row)}
+                            disabled={
+                              mutatingReport ||
+                              downloadingClosureId === String(row.id ?? "")
+                            }
+                          >
+                            {downloadingClosureId === String(row.id ?? "")
+                              ? "Descargando..."
+                              : "Descargar area"}
+                          </button>
+                          <button
+                            type="button"
+                            style={styles.inlineDangerBtn}
+                            onClick={() => void handleDeleteClosure(row)}
+                            disabled={mutatingReport}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
