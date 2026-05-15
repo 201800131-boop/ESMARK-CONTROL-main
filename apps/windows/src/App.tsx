@@ -6,7 +6,8 @@ import { Dashboard } from './screens/Dashboard';
 
 type AppState = 'loading' | 'login' | 'dashboard';
 
-const UPDATE_NOTICE_KEY = 'esmark-update-notice-manual-closures-v2';
+const UPDATE_NOTICE_VERSION = 'manual-closures-v1';
+const UPDATE_NOTICE_KEY = `esmark-update-notice-${UPDATE_NOTICE_VERSION}`;
 
 export function App(): React.JSX.Element {
   const [state, setState] = React.useState<AppState>('loading');
