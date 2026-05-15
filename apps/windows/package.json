@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "@esmark/windows",
-  "version": "1.0.28",
+  "version": "1.0.29",
   "description": "ESMARK Control desktop app",
   "author": "ESMARK",
   "private": true,
@@ -90,3 +90,4 @@
     }
   }
 }
+
