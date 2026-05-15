@@ -52,13 +52,9 @@ export function App(): React.JSX.Element {
 
   React.useEffect(() => {
     if (state !== 'dashboard') return;
-    if (user?.role !== 'admin') {
-      setShowUpdateNotice(false);
-      return;
-    }
     const alreadySeen = window.localStorage.getItem(UPDATE_NOTICE_KEY);
     setShowUpdateNotice(alreadySeen !== 'seen');
-  }, [state, user?.role]);
+  }, [state]);
 
   function closeUpdateNotice(): void {
     window.localStorage.setItem(UPDATE_NOTICE_KEY, 'seen');
