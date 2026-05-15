@@ -32,7 +32,11 @@ $updated = [regex]::Replace(
   1
 )
 
-Set-Content -Path $packagePath -Value $updated -Encoding UTF8
+[System.IO.File]::WriteAllText(
+  $packagePath,
+  $updated,
+  [System.Text.UTF8Encoding]::new($false)
+)
 
 git add apps/windows/package.json
 git commit -m "chore(release): bump windows app to $newTag"
