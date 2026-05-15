@@ -11,7 +11,12 @@ import { PedidosDanadosScreen } from "./PedidosDanadosScreen";
 import { ReportesScreen } from "./ReportesScreen";
 import "./Dashboard.css";
 
-type Section = "dashboard" | "pedidos" | "reportes" | "usuarios";
+type Section =
+  | "dashboard"
+  | "pedidos"
+  | "reportes"
+  | "historial"
+  | "usuarios";
 type PeriodFilter = "hoy" | "semana" | "mes" | "todo";
 
 const DASHBOARD_SECTION_KEY = "esmark.dashboard.section";
@@ -164,6 +169,7 @@ export function Dashboard({
       stored === "dashboard" ||
       stored === "pedidos" ||
       stored === "reportes" ||
+      stored === "historial" ||
       stored === "usuarios"
     ) {
       return stored;
@@ -494,6 +500,7 @@ export function Dashboard({
     dashboard: isAdmin ? "Panel de Control" : "Inicio de Área",
     pedidos: "Pedidos Dañados",
     reportes: "Reportes",
+    historial: "Historial de Cierres",
     usuarios: "Gestión de Usuarios",
   };
 
@@ -548,6 +555,14 @@ export function Dashboard({
             active={section === "reportes"}
             onClick={() => setSection("reportes")}
           />
+          {isAdmin && (
+            <NavItem
+              icon={<HistoryIcon />}
+              label="Historial de Cierres"
+              active={section === "historial"}
+              onClick={() => setSection("historial")}
+            />
+          )}
           {isAdmin && (
             <NavItem
               icon={<UsersIcon />}
@@ -823,6 +838,9 @@ export function Dashboard({
 
         {section === "pedidos" && <PedidosDanadosScreen user={user} />}
         {section === "reportes" && <ReportesScreen user={user} />}
+        {section === "historial" && isAdmin && (
+          <ReportesScreen user={user} historyOnly />
+        )}
         {section === "usuarios" && isAdmin && (
           <UserManagement
             currentUserId={user.id}
@@ -1008,6 +1026,16 @@ function ReportIcon(): React.JSX.Element {
       <path d="M14 3v5h5" />
       <path d="M10 13h6" />
       <path d="M10 17h4" />
+    </svg>
+  );
+}
+
+function HistoryIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false">
+      <path d="M12 8v5l3 2" />
+      <path d="M4 12a8 8 0 1 0 2.3-5.7" />
+      <path d="M4 4v5h5" />
     </svg>
   );
 }

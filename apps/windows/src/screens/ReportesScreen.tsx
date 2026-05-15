@@ -5,6 +5,7 @@ import type { AuthUser } from "../services/auth";
 
 interface Props {
   user: AuthUser;
+  historyOnly?: boolean;
 }
 
 type AnyRow = Record<string, unknown>;
@@ -305,11 +306,12 @@ function formatDateShort(value: unknown): string {
   });
 }
 
-export function ReportesScreen({ user }: Props): React.JSX.Element {
+export function ReportesScreen({ user, historyOnly = false }: Props): React.JSX.Element {
   const [loading, setLoading] = React.useState(true);
   const [loadingClosures, setLoadingClosures] = React.useState(true);
   const [generating, setGenerating] = React.useState(false);
-  const [executingManualClosure, setExecutingManualClosure] = React.useState(false);
+  const [executingManualClosure, setExecutingManualClosure] =
+    React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [rows, setRows] = React.useState<AnyRow[]>([]);
   const [closureRows, setClosureRows] = React.useState<AnyRow[]>([]);
@@ -790,7 +792,8 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
     setSuccess(null);
 
     try {
-      const generatedByName = (user.fullName || user.username || "").trim() || user.id;
+      const generatedByName =
+        (user.fullName || user.username || "").trim() || user.id;
       const { data, error: rpcError } = await supabase.rpc(
         "ejecutar_cierre_quincenal_manual",
         {
@@ -806,20 +809,27 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
       }
 
       if (data && !data.success) {
-        setError(`Error al ejecutar cierre: ${data.error ?? "Error desconocido"}`);
+        setError(
+          `Error al ejecutar cierre: ${data.error ?? "Error desconocido"}`,
+        );
         setExecutingManualClosure(false);
         return;
       }
 
-      const dateRange = data?.fecha_inicio && data?.fecha_fin 
-        ? `${String(data.fecha_inicio).slice(0, 10)} al ${String(data.fecha_fin).slice(0, 10)}`
-        : "";
-      setSuccess(`Cierre realizado exitosamente${dateRange ? ": " + dateRange : ""}`);
+      const dateRange =
+        data?.fecha_inicio && data?.fecha_fin
+          ? `${String(data.fecha_inicio).slice(0, 10)} al ${String(data.fecha_fin).slice(0, 10)}`
+          : "";
+      setSuccess(
+        `Cierre realizado exitosamente${dateRange ? ": " + dateRange : ""}`,
+      );
       window.setTimeout(() => setSuccess(null), 5000);
       void loadClosures();
       setRows([]);
     } catch (err) {
-      setError(`Error: ${err instanceof Error ? err.message : "Error desconocido"}`);
+      setError(
+        `Error: ${err instanceof Error ? err.message : "Error desconocido"}`,
+      );
     } finally {
       setExecutingManualClosure(false);
     }
@@ -1123,6 +1133,95 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
     setDownloadingClosureId(null);
   }
 
+  if (historyOnly) {
+    return (
+      <div>
+        <div style={styles.hero}>
+          <div>
+            <div style={styles.heroKicker}>Historial administrativo</div>
+            <h2 style={styles.heroTitle}>Historial de Cierres</h2>
+            <p style={styles.heroText}>
+              Consulta los cierres generados, revisa el responsable y descarga
+              los Excel guardados por area.
+            </p>
+          </div>
+          <div style={styles.heroStats}>
+            <span style={styles.heroBadge}>{closureRows.length} cierres</span>
+          </div>
+        </div>
+
+        <div style={styles.card}>
+          <h3 style={styles.h3}>Cierres registrados</h3>
+          {loadingClosures ? (
+            <p>Cargando cierres...</p>
+          ) : (
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Fecha de cierre</th>
+                  <th style={styles.th}>Area</th>
+                  <th style={styles.th}>Desde</th>
+                  <th style={styles.th}>Hasta</th>
+                  <th style={styles.th}>Generado por</th>
+                  <th style={styles.th}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {closureRows.map((r, idx) => (
+                  <tr key={`${String(r.id ?? idx)}-closure-history-${idx}`}>
+                    <td style={styles.td}>
+                      {String(r.created_at ?? "-").slice(0, 10)}
+                    </td>
+                    <td style={styles.td}>
+                      {formatAreaLabel(String(r.area ?? "-"))}
+                    </td>
+                    <td style={styles.td}>{String(r.fecha_inicio ?? "-")}</td>
+                    <td style={styles.td}>{String(r.fecha_fin ?? "-")}</td>
+                    <td style={styles.td}>
+                      {String(r.generado_por_nombre ?? r.generado_por ?? "-")}
+                    </td>
+                    <td style={styles.td}>
+                      <div style={styles.rowActions}>
+                        <button
+                          type="button"
+                          style={styles.inlineBtn}
+                          onClick={() => void handleDownloadClosure(r)}
+                          disabled={
+                            mutatingReport ||
+                            downloadingClosureId === String(r.id ?? "")
+                          }
+                        >
+                          {downloadingClosureId === String(r.id ?? "")
+                            ? "Descargando..."
+                            : "Descargar"}
+                        </button>
+                        <button
+                          type="button"
+                          style={styles.inlineDangerBtn}
+                          onClick={() => void handleDeleteClosure(r)}
+                          disabled={mutatingReport}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {closureRows.length === 0 && (
+                  <tr>
+                    <td style={styles.td} colSpan={6}>
+                      Aun no hay cierres manuales registrados.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div style={styles.hero}>
@@ -1208,7 +1307,9 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
               onClick={() => void handleStartClosure()}
               disabled={executingManualClosure}
             >
-              {executingManualClosure ? "Iniciando cierre..." : "Empezar Cierre"}
+              {executingManualClosure
+                ? "Iniciando cierre..."
+                : "Empezar Cierre"}
             </button>
           )}
           <button
@@ -1762,7 +1863,9 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
             <tbody>
               {closureRows.map((r, idx) => (
                 <tr key={`${String(r.id ?? idx)}-closure-${idx}`}>
-                  <td style={styles.td}>{String(r.created_at ?? "-").slice(0, 10)}</td>
+                  <td style={styles.td}>
+                    {String(r.created_at ?? "-").slice(0, 10)}
+                  </td>
                   <td style={styles.td}>
                     {formatAreaLabel(String(r.area ?? "-"))}
                   </td>
