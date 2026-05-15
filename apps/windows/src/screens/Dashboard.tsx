@@ -533,7 +533,7 @@ export function Dashboard({
     dashboard: isAdmin ? "Panel de Control" : "Inicio de Área",
     pedidos: "Pedidos Dañados",
     reportes: "Reportes",
-    historial: "Historial de Cierres",
+    historial: "Historial",
     usuarios: "Gestión de Usuarios",
   };
 
@@ -591,7 +591,7 @@ export function Dashboard({
           {isAdmin && (
             <NavItem
               icon={<HistoryIcon />}
-              label="Historial de Cierres"
+              label="Historial"
               active={section === "historial"}
               onClick={() => setSection("historial")}
             />
