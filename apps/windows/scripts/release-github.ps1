@@ -28,7 +28,7 @@ Write-Host "Incrementando version a $newVersion ..." -ForegroundColor Cyan
 $updated = [regex]::Replace(
   $raw,
   '"version"\s*:\s*"\d+\.\d+\.\d+"',
-  "\"version\": \"$newVersion\"",
+  "`"version`": `"$newVersion`"",
   1
 )
 
