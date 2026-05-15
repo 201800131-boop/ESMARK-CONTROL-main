@@ -340,7 +340,8 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
   const [trelloAutoSaved, setTrelloAutoSaved] = React.useState(false);
 
   const today = new Date().toISOString().slice(0, 10);
-  const [fechaInicio, setFechaInicio] = React.useState(today);
+  const monthStart = `${today.slice(0, 8)}01`;
+  const [fechaInicio, setFechaInicio] = React.useState(monthStart);
   const [fechaFin, setFechaFin] = React.useState(today);
   const [area, setArea] = React.useState("all");
 

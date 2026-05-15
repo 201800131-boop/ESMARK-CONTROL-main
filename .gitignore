@@ -10,6 +10,7 @@ dist/
 build/
 *.js.map
 apps/windows/release/
+.codex-run/
 
 # Environment
 .env
