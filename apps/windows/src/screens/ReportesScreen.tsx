@@ -328,6 +328,9 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
     observacion: "",
   });
   const [mutatingReport, setMutatingReport] = React.useState(false);
+  const [downloadingClosureId, setDownloadingClosureId] = React.useState<
+    string | null
+  >(null);
   const [trelloCatalog, setTrelloCatalog] = React.useState<
     TrelloLookupCard[] | null
   >(null);
@@ -796,7 +799,7 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
     targetRows = rows,
   ): Promise<void> {
     if (!canGenerateExcel) {
-      setError("Solo el administrador puede generar Excel de cierre.");
+      setError("Solo el administrador puede descargar Excel.");
       return;
     }
 
@@ -817,29 +820,9 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
       `Área: ${selectedAreaLabel} | Rango: ${fechaInicio} a ${fechaFin} | Registros: ${targetRows.length}`,
     );
 
-    const reportArea = targetArea === "all" ? "all" : targetArea;
-    const generatedByName =
-      (user.fullName || user.username || "").trim() || user.id;
-    const saveMeta = await supabase.from("reportes_generados").insert({
-      area: reportArea,
-      generado_por: user.id,
-      generado_por_nombre: generatedByName,
-      fecha_inicio: fechaInicio,
-      fecha_fin: fechaFin,
-    });
-
-    if (saveMeta.error) {
-      setError(
-        `Excel generado, pero no se guardó historial de cierre: ${saveMeta.error.message}`,
-      );
-    } else {
-      setSuccess("Cierre generado y guardado en historial.");
-      window.setTimeout(() => setSuccess(null), 3000);
-    }
-
+    setSuccess("Excel descargado.");
+    window.setTimeout(() => setSuccess(null), 3000);
     setGenerating(false);
-    void loadRows();
-    void loadClosures();
   }
 
   function startEditReport(row: AnyRow): void {
@@ -1043,6 +1026,70 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
     window.setTimeout(() => setSuccess(null), 3000);
     setMutatingReport(false);
     void loadClosures();
+  }
+
+  async function handleDownloadClosure(row: AnyRow): Promise<void> {
+    const closureId = getRowString(row, "id") ?? "";
+    const from = String(row.fecha_inicio ?? "").slice(0, 10);
+    const to = String(row.fecha_fin ?? "").slice(0, 10);
+    const areaCode = normalizeAreaCode(String(row.area ?? ""));
+    const areaId = areaCode === "all" ? null : areaIdByCode[areaCode];
+
+    if (!from || !to) {
+      setError("Este cierre no tiene rango de fechas para descargar.");
+      return;
+    }
+
+    if (areaCode !== "all" && !areaId) {
+      setError("No se encontro el area del cierre para descargar.");
+      return;
+    }
+
+    setDownloadingClosureId(closureId || `${areaCode}-${from}-${to}`);
+    setError(null);
+
+    let query = supabase
+      .from("pedidos_danados")
+      .select(
+        "id,fecha,fecha_registro,area_id,nombre_pedido,cantidad_danada,motivo_dano,tipo_trabajo,tipo_dano,persona_dano,observacion",
+      )
+      .order("fecha_registro", { ascending: false })
+      .limit(1000);
+
+    if (areaId) {
+      query = query.eq("area_id", areaId);
+    }
+
+    const { data, error: qErr } = await query;
+    if (qErr) {
+      setError(qErr.message);
+      setDownloadingClosureId(null);
+      return;
+    }
+
+    const closureRows = ((data ?? []) as unknown as AnyRow[]).filter((item) => {
+      const raw = item.fecha ?? item.fecha_registro;
+      if (!raw) return true;
+      const normalized = String(raw).slice(0, 10);
+      return normalized >= from && normalized <= to;
+    });
+    const areaLabel =
+      areaCode === "all"
+        ? "Todas las areas"
+        : (areaOptions.find((option) => option.code === areaCode)?.label ??
+          formatAreaLabel(areaCode));
+
+    exportReportToExcel(
+      closureRows,
+      areaNameById,
+      `cierre_${areaCode || "area"}_${from}_${to}.xlsx`,
+      "Reporte de Pedidos Danados - ESMARK Control",
+      `Area: ${areaLabel} | Rango: ${from} a ${to} | Registros: ${closureRows.length}`,
+    );
+
+    setSuccess("Excel descargado.");
+    window.setTimeout(() => setSuccess(null), 3000);
+    setDownloadingClosureId(null);
   }
 
   return (
@@ -1695,14 +1742,29 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
                   </td>
                   {user.role === "admin" && (
                     <td style={styles.td}>
-                      <button
-                        type="button"
-                        style={styles.inlineDangerBtn}
-                        onClick={() => void handleDeleteClosure(r)}
-                        disabled={mutatingReport}
-                      >
-                        Eliminar
-                      </button>
+                      <div style={styles.rowActions}>
+                        <button
+                          type="button"
+                          style={styles.inlineBtn}
+                          onClick={() => void handleDownloadClosure(r)}
+                          disabled={
+                            mutatingReport ||
+                            downloadingClosureId === String(r.id ?? "")
+                          }
+                        >
+                          {downloadingClosureId === String(r.id ?? "")
+                            ? "Descargando..."
+                            : "Descargar"}
+                        </button>
+                        <button
+                          type="button"
+                          style={styles.inlineDangerBtn}
+                          onClick={() => void handleDeleteClosure(r)}
+                          disabled={mutatingReport}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
                     </td>
                   )}
                 </tr>
