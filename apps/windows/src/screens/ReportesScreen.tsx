@@ -300,6 +300,7 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
   const [loading, setLoading] = React.useState(true);
   const [loadingClosures, setLoadingClosures] = React.useState(true);
   const [generating, setGenerating] = React.useState(false);
+  const [executingManualClosure, setExecutingManualClosure] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [rows, setRows] = React.useState<AnyRow[]>([]);
   const [closureRows, setClosureRows] = React.useState<AnyRow[]>([]);
@@ -407,15 +408,7 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
     [],
   );
 
-  const now = new Date();
-  const day = now.getDate();
-  const lastDayOfMonth = new Date(
-    now.getFullYear(),
-    now.getMonth() + 1,
-    0,
-  ).getDate();
-  const canGenerateToday = day === 15 || day === lastDayOfMonth;
-  const canGenerateExcel = user.role === "admin" && canGenerateToday;
+  const canGenerateExcel = user.role === "admin";
 
   React.useEffect(() => {
     async function loadAreaCatalog(): Promise<void> {
@@ -747,18 +740,63 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
     };
   }, [selectedRow, trelloCatalog]);
 
+  async function handleStartClosure(): Promise<void> {
+    if (user.role !== "admin") {
+      setError("Solo administradores pueden iniciar un cierre.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "¿Iniciar cierre manual ahora? Se generará el reporte de los últimos 15 días y todo lo nuevo será para el siguiente cierre.",
+    );
+    if (!confirmed) return;
+
+    setExecutingManualClosure(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const generatedByName = (user.fullName || user.username || "").trim() || user.id;
+      const { data, error: rpcError } = await supabase.rpc(
+        "ejecutar_cierre_quincenal_manual",
+        {
+          p_realizado_por: user.id,
+          p_realizado_por_nombre: generatedByName,
+        },
+      );
+
+      if (rpcError) {
+        setError(`Error al ejecutar cierre: ${rpcError.message}`);
+        setExecutingManualClosure(false);
+        return;
+      }
+
+      if (data && !data.success) {
+        setError(`Error al ejecutar cierre: ${data.error ?? "Error desconocido"}`);
+        setExecutingManualClosure(false);
+        return;
+      }
+
+      const dateRange = data?.fecha_inicio && data?.fecha_fin 
+        ? `${String(data.fecha_inicio).slice(0, 10)} al ${String(data.fecha_fin).slice(0, 10)}`
+        : "";
+      setSuccess(`Cierre realizado exitosamente${dateRange ? ": " + dateRange : ""}`);
+      window.setTimeout(() => setSuccess(null), 5000);
+      void loadClosures();
+      void loadRows();
+    } catch (err) {
+      setError(`Error: ${err instanceof Error ? err.message : "Error desconocido"}`);
+    } finally {
+      setExecutingManualClosure(false);
+    }
+  }
+
   async function handleGenerateExcel(
     targetArea = area,
     targetRows = rows,
   ): Promise<void> {
     if (!canGenerateExcel) {
-      if (user.role !== "admin") {
-        setError("Solo el administrador puede generar Excel de cierre.");
-      } else {
-        setError(
-          "El Excel de cierre solo puede generarse a mitad de mes o el último día del mes.",
-        );
-      }
+      setError("Solo el administrador puede generar Excel de cierre.");
       return;
     }
 
@@ -1082,6 +1120,19 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
           >
             Filtrar
           </button>
+          {user.role === "admin" && (
+            <button
+              style={{
+                ...styles.primaryBtn,
+                ...styles.filterBtn,
+                backgroundColor: "#d4a574",
+              }}
+              onClick={() => void handleStartClosure()}
+              disabled={executingManualClosure}
+            >
+              {executingManualClosure ? "Iniciando cierre..." : "Empezar Cierre"}
+            </button>
+          )}
           <button
             style={{ ...styles.primaryBtn, ...styles.filterBtn }}
             onClick={() => void handleGenerateExcel()}
@@ -1090,13 +1141,6 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
             {generating ? "Generando..." : "Generar Excel"}
           </button>
         </div>
-        {!canGenerateExcel && (
-          <p style={styles.info}>
-            {user.role === "admin"
-              ? "El botón de Excel se habilita a mitad de mes y el último día del mes."
-              : "Solo el administrador puede generar el Excel quincenal a mitad de mes y fin de mes."}
-          </p>
-        )}
         {success && <p style={styles.success}>{success}</p>}
         {notice && <p style={styles.info}>{notice}</p>}
         {error && <p style={styles.error}>{error}</p>}
@@ -1640,7 +1684,7 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
             <tbody>
               {closureRows.map((r, idx) => (
                 <tr key={`${String(r.id ?? idx)}-closure-${idx}`}>
-                  <td style={styles.td}>{String(r.created_at ?? "-")}</td>
+                  <td style={styles.td}>{String(r.created_at ?? "-").slice(0, 10)}</td>
                   <td style={styles.td}>
                     {formatAreaLabel(String(r.area ?? "-"))}
                   </td>
