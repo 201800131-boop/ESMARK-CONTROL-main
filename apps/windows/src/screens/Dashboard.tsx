@@ -68,6 +68,11 @@ interface OnlinePresence {
   onlineAt?: string;
 }
 
+interface NextClosureInfo {
+  fecha_inicio?: string | null;
+  fecha_fin?: string | null;
+}
+
 function normalizeAreaCode(area?: string): string {
   const clean = String(area ?? "")
     .normalize("NFD")
@@ -98,38 +103,27 @@ function getPeriodLabel(period: PeriodFilter): string {
   return "Todo";
 }
 
-function getNextAreaReportClosingDate(): Date {
-  const now = new Date();
-  const midMonthClose = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    15,
-    18,
-    0,
-    0,
-    0,
-  );
-  const endMonthClose = new Date(
-    now.getFullYear(),
-    now.getMonth() + 1,
-    0,
-    18,
-    0,
-    0,
-    0,
-  );
-
-  if (now < midMonthClose) return midMonthClose;
-  if (now < endMonthClose) return endMonthClose;
-  return new Date(now.getFullYear(), now.getMonth() + 1, 15, 18, 0, 0, 0);
-}
-
 function formatClosingDate(value: Date): string {
   return new Intl.DateTimeFormat("es-HN", {
     day: "numeric",
     month: "long",
     year: "numeric",
   }).format(value);
+}
+
+function parseClosureDate(value?: string | null): Date | null {
+  if (!value) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? `${value}T00:00:00`
+    : value;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatNextClosureLabel(info?: NextClosureInfo | null): string {
+  const end = parseClosureDate(info?.fecha_fin);
+  if (end) return formatClosingDate(end);
+  return "Pendiente de cierre";
 }
 
 function formatShortDate(value?: string): string {
@@ -197,6 +191,8 @@ export function Dashboard({
     monthClosures: 0,
     recentDamages: [],
   });
+  const [nextClosingLabel, setNextClosingLabel] =
+    React.useState("Calculando...");
 
   const isAdmin = user.role === "admin";
   const areaScope = getAreaScope(user);
@@ -210,14 +206,51 @@ export function Dashboard({
           ),
         )
       : 0;
-  const nextClosingLabel = React.useMemo(
-    () => formatClosingDate(getNextAreaReportClosingDate()),
-    [],
-  );
+  const loadNextClosureInfo = React.useCallback(async (): Promise<void> => {
+    const { data, error } = await supabase.rpc("obtener_info_proximo_cierre");
+
+    if (error) {
+      setNextClosingLabel("Pendiente de cierre");
+      return;
+    }
+
+    setNextClosingLabel(formatNextClosureLabel(data as NextClosureInfo));
+  }, []);
 
   React.useEffect(() => {
     window.localStorage.setItem(DASHBOARD_SECTION_KEY, section);
   }, [section]);
+
+  React.useEffect(() => {
+    void loadNextClosureInfo();
+
+    const intervalId = window.setInterval(() => {
+      void loadNextClosureInfo();
+    }, 30_000);
+
+    const channel = supabase
+      .channel("dashboard-next-closure")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "ultimo_cierre_quincenal" },
+        () => {
+          void loadNextClosureInfo();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "reportes_generados" },
+        () => {
+          void loadNextClosureInfo();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      window.clearInterval(intervalId);
+      void supabase.removeChannel(channel);
+    };
+  }, [loadNextClosureInfo]);
 
   React.useEffect(() => {
     void updateLastSeen();
@@ -837,9 +870,18 @@ export function Dashboard({
         )}
 
         {section === "pedidos" && <PedidosDanadosScreen user={user} />}
-        {section === "reportes" && <ReportesScreen user={user} />}
+        {section === "reportes" && (
+          <ReportesScreen
+            user={user}
+            onClosureComplete={() => void loadNextClosureInfo()}
+          />
+        )}
         {section === "historial" && isAdmin && (
-          <ReportesScreen user={user} historyOnly />
+          <ReportesScreen
+            user={user}
+            historyOnly
+            onClosureComplete={() => void loadNextClosureInfo()}
+          />
         )}
         {section === "usuarios" && isAdmin && (
           <UserManagement
