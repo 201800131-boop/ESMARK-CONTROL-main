@@ -76,6 +76,15 @@ function formatAreaLabel(area?: string): string {
   return String(area ?? "-");
 }
 
+function getLatestClosureCreatedAt(rows: AnyRow[]): string | null {
+  return (
+    rows
+      .map((row) => String(row.created_at ?? ""))
+      .filter(Boolean)
+      .sort((a, b) => b.localeCompare(a))[0] ?? null
+  );
+}
+
 const REPORT_HEADERS = [
   "Fecha",
   "Area",
@@ -344,6 +353,10 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
   const [fechaInicio, setFechaInicio] = React.useState(monthStart);
   const [fechaFin, setFechaFin] = React.useState(today);
   const [area, setArea] = React.useState("all");
+  const latestClosureCreatedAt = React.useMemo(
+    () => getLatestClosureCreatedAt(closureRows),
+    [closureRows],
+  );
 
   const selectedAreaId = String(selectedRow?.area_id ?? "");
   const selectedAreaName = selectedRow
@@ -491,6 +504,15 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
       const from = fechaInicio;
       const to = fechaFin;
       const filtered = ((data ?? []) as unknown as AnyRow[]).filter((row) => {
+        const registeredAt = String(row.fecha_registro ?? "");
+        if (
+          latestClosureCreatedAt &&
+          registeredAt &&
+          registeredAt <= latestClosureCreatedAt
+        ) {
+          return false;
+        }
+
         const raw = row.fecha ?? row.fecha_registro;
         if (!raw) return true;
         const normalized = String(raw).slice(0, 10);
@@ -511,7 +533,15 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
       setRows([]);
     }
     setLoading(false);
-  }, [area, areaIdByCode, fechaFin, fechaInicio, user.role, userAreaId]);
+  }, [
+    area,
+    areaIdByCode,
+    fechaFin,
+    fechaInicio,
+    latestClosureCreatedAt,
+    user.role,
+    userAreaId,
+  ]);
 
   const loadClosures = React.useCallback(async (): Promise<void> => {
     setLoadingClosures(true);
@@ -787,7 +817,7 @@ export function ReportesScreen({ user }: Props): React.JSX.Element {
       setSuccess(`Cierre realizado exitosamente${dateRange ? ": " + dateRange : ""}`);
       window.setTimeout(() => setSuccess(null), 5000);
       void loadClosures();
-      void loadRows();
+      setRows([]);
     } catch (err) {
       setError(`Error: ${err instanceof Error ? err.message : "Error desconocido"}`);
     } finally {
