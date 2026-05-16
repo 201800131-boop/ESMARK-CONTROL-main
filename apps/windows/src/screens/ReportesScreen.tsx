@@ -1551,6 +1551,7 @@ export function ReportesScreen({
                     <th style={styles.th}>Fecha</th>
                     <th style={styles.th}>Area</th>
                     <th style={styles.th}>Pedido / trabajo</th>
+                    <th style={styles.th}>Tarjeta Trello</th>
                     <th style={styles.th}>Cantidad</th>
                     <th style={styles.th}>Motivo</th>
                     <th style={styles.th}>Detalle</th>
@@ -1570,6 +1571,51 @@ export function ReportesScreen({
                         {String(row.nombre_pedido ?? "-")}
                       </td>
                       <td style={styles.td}>
+                        {(() => {
+                          const trelloName = getFirstNonEmpty(
+                            getRowString(row, "trello_card_name"),
+                            getRowString(row, "trello_card_id"),
+                          );
+                          const trelloList = getRowString(
+                            row,
+                            "trello_list_name",
+                          );
+                          const trelloUrl = resolveTrelloUrl(row);
+
+                          if (!trelloName && !trelloUrl) {
+                            return (
+                              <span style={styles.trelloTableEmpty}>
+                                Sin tarjeta
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <div style={styles.trelloTableCard}>
+                              <strong style={styles.trelloTableName}>
+                                {trelloName ?? "Tarjeta vinculada"}
+                              </strong>
+                              {trelloList && (
+                                <span style={styles.trelloTableList}>
+                                  {trelloList}
+                                </span>
+                              )}
+                              {trelloUrl && (
+                                <a
+                                  href={trelloUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={styles.trelloTableLink}
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  Abrir en Trello
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td style={styles.td}>
                         {String(row.cantidad_danada ?? "-")}
                       </td>
                       <td style={styles.td}>{String(row.motivo_dano ?? "-")}</td>
@@ -1586,7 +1632,7 @@ export function ReportesScreen({
                   ))}
                   {historyRows.length === 0 && (
                     <tr>
-                      <td style={styles.td} colSpan={6}>
+                      <td style={styles.td} colSpan={7}>
                         Sin reportes registrados.
                       </td>
                     </tr>
@@ -1615,6 +1661,102 @@ export function ReportesScreen({
                   Cerrar
                 </button>
               </div>
+              {(() => {
+                const trelloCardId = getRowString(selectedRow, "trello_card_id");
+                const trelloCardName = getRowString(
+                  selectedRow,
+                  "trello_card_name",
+                );
+                const trelloListName = getRowString(
+                  selectedRow,
+                  "trello_list_name",
+                );
+                const trelloBoard = getFirstNonEmpty(
+                  getRowString(selectedRow, "trello_board_name"),
+                  getRowString(selectedRow, "trello_board_id"),
+                );
+                const trelloDescription = getFirstNonEmpty(
+                  getRowString(selectedRow, "trello_card_desc"),
+                  getRowString(selectedRow, "trello_description"),
+                );
+                const trelloUrl = resolveTrelloUrl(selectedRow);
+                const hasTrelloData = Boolean(
+                  trelloCardId ||
+                    trelloCardName ||
+                    trelloListName ||
+                    trelloBoard ||
+                    trelloUrl,
+                );
+
+                return (
+                  <>
+                    <div style={styles.modalSectionLabel}>
+                      Tarjeta de Trello
+                    </div>
+                    <div style={styles.trelloInfoBox}>
+                      <div style={styles.trelloInfoHeader}>
+                        <div style={styles.trelloInfoTitle}>
+                          Informacion vinculada al reporte
+                        </div>
+                        <span
+                          style={{
+                            ...styles.trelloStatus,
+                            ...(hasTrelloData
+                              ? styles.trelloStatusConnected
+                              : styles.trelloStatusEmpty),
+                          }}
+                        >
+                          {hasTrelloData ? "Conectada" : "Sin tarjeta"}
+                        </span>
+                      </div>
+                      <div style={styles.trelloInfoGrid}>
+                        <div style={styles.trelloInfoItem}>
+                          <div style={styles.trelloInfoKey}>Tarjeta</div>
+                          <div style={styles.trelloInfoValue}>
+                            {trelloCardName ?? trelloCardId ?? "-"}
+                          </div>
+                        </div>
+                        <div style={styles.trelloInfoItem}>
+                          <div style={styles.trelloInfoKey}>Lista</div>
+                          <div style={styles.trelloInfoValue}>
+                            {trelloListName ?? "-"}
+                          </div>
+                        </div>
+                        <div style={styles.trelloInfoItem}>
+                          <div style={styles.trelloInfoKey}>Tablero</div>
+                          <div style={styles.trelloInfoValue}>
+                            {trelloBoard ?? "-"}
+                          </div>
+                        </div>
+                        <div style={styles.trelloInfoItemWide}>
+                          <div style={styles.trelloInfoKey}>Enlace</div>
+                          <div style={styles.trelloInfoValue}>
+                            {trelloUrl ? (
+                              <a
+                                href={trelloUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={styles.trelloInfoLinkBtn}
+                              >
+                                Abrir tarjeta en Trello
+                              </a>
+                            ) : (
+                              "No disponible"
+                            )}
+                          </div>
+                        </div>
+                        <div style={styles.trelloInfoItemWide}>
+                          <div style={styles.trelloInfoKey}>Descripcion</div>
+                          <div style={styles.trelloInfoDescription}>
+                            {trelloDescription ?? "Sin descripcion en Trello."}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+              <div style={styles.modalSectionLabel}>Datos del reporte</div>
               <div style={styles.modalGrid}>
                 <div style={styles.modalItem}>
                   <div style={styles.modalKey}>Area</div>
@@ -2765,6 +2907,34 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #93c5fd",
     textDecoration: "none",
     background: "#eff6ff",
+    fontWeight: 700,
+  },
+  trelloTableCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+    maxWidth: 260,
+  },
+  trelloTableName: {
+    color: "#0f172a",
+    fontSize: 13,
+    lineHeight: 1.25,
+    wordBreak: "break-word",
+  },
+  trelloTableList: {
+    color: "#64748b",
+    fontSize: 12,
+    wordBreak: "break-word",
+  },
+  trelloTableLink: {
+    color: "#1d4ed8",
+    fontSize: 12,
+    fontWeight: 800,
+    textDecoration: "none",
+  },
+  trelloTableEmpty: {
+    color: "#94a3b8",
+    fontSize: 12,
     fontWeight: 700,
   },
   modalItem: {
