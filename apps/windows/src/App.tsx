@@ -6,7 +6,7 @@ import { Dashboard } from './screens/Dashboard';
 
 type AppState = 'loading' | 'login' | 'dashboard';
 
-const UPDATE_NOTICE_VERSION = 'dashboard-reportes-v1-0-38';
+const UPDATE_NOTICE_VERSION = 'dashboard-reportes-v1-0-39';
 const UPDATE_NOTICE_KEY = `esmark-update-notice-${UPDATE_NOTICE_VERSION}`;
 const SUPABASE_SPACE_NOTICE_KEY = 'esmark.supabaseSpace.last90Notice';
 const SUPABASE_SPACE_CHECK_MS = 30 * 60 * 1000;

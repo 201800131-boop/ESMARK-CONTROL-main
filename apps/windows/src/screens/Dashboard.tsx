@@ -110,13 +110,34 @@ function normalizeAreaCode(area?: string): string {
 }
 
 function formatAreaLabel(area?: string): string {
-  const code = normalizeAreaCode(area);
+  const raw = String(area ?? "").trim();
+  const code = normalizeAreaCode(raw);
   if (code === "impresion") return "IMPRESIÓN";
   if (code === "diseno") return "DISEÑO";
   if (code === "sublimacion") return "SUBLIMACIÓN";
   if (code === "almacen") return "ALMACÉN";
   if (code === "administracion") return "ADMINISTRACIÓN";
-  return String(area ?? "").toUpperCase();
+
+  const display = raw
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\bdiseno\b/gi, "diseño")
+    .replace(/\bimpresion\b/gi, "impresión")
+    .replace(/\bsublimacion\b/gi, "sublimación")
+    .replace(/\balmacen\b/gi, "almacén")
+    .replace(/\badministracion\b/gi, "administración");
+
+  return display.toLocaleUpperCase("es-HN");
+}
+
+function formatCompactClosingLabel(value: string): string {
+  const date = parseClosureDate(value);
+  if (!date) return value;
+  return new Intl.DateTimeFormat("es-HN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
 }
 
 function getPeriodLabel(period: PeriodFilter): string {
@@ -639,7 +660,7 @@ export function Dashboard({
           )
           .eq("area_id", areaId)
           .order("fecha_registro", { ascending: false })
-          .limit(5),
+          .limit(8),
         supabase
           .from("reportes_generados")
           .select("id,created_at")
@@ -1454,17 +1475,9 @@ function AreaHome({
   onOpenReports: () => void;
 }): React.JSX.Element {
   const areaCode = normalizeAreaCode(areaScope);
-  const progress =
-    stats.monthDamages > 0
-      ? Math.min(
-          100,
-          Math.round(
-            (stats.monthClosures / Math.max(stats.monthDamages, 1)) * 100,
-          ),
-        )
-      : 0;
   const statusLabel =
     stats.monthClosures > 0 ? "Cierre registrado" : "Cierre pendiente";
+  const compactClosingLabel = formatCompactClosingLabel(nextClosingLabel);
 
   return (
     <div className="dashboard-area-workspace">
@@ -1522,114 +1535,95 @@ function AreaHome({
         </div>
       </section>
 
-      <div className="dashboard-area-widget-grid">
-        <AreaWidget
-          title="Danos hoy"
-          value={stats.loading ? "..." : String(stats.todayDamages)}
-          detail="Registros del dia"
-          tone="blue"
-          icon={<DamageIcon />}
-        />
-        <AreaWidget
-          title="Danos del mes"
-          value={stats.loading ? "..." : String(stats.monthDamages)}
-          detail="Acumulado actual"
-          tone="red"
-          icon={<AlertFileIcon />}
-        />
-        <AreaWidget
-          title="Cierres del mes"
-          value={stats.loading ? "..." : String(stats.monthClosures)}
-          detail={
-            stats.lastClosureDate
-              ? `Ultimo: ${formatShortDate(stats.lastClosureDate)}`
-              : "Aun sin cierre"
-          }
-          tone="green"
-          icon={<ReportIcon />}
-        />
-        <AreaWidget
-          title="Próximo cierre"
-          value={nextClosingLabel.split(",")[0] ?? nextClosingLabel}
-          detail={nextClosingLabel}
-          tone="orange"
-          icon={<PendingIcon />}
-        />
-      </div>
-
       <div className="dashboard-area-layout">
-        <section className="dashboard-area-panel">
+        <section className="dashboard-area-panel dashboard-area-indicators-card">
           <div className="dashboard-section-heading">
             <div>
-              <h3 className="dashboard-area-stats-title">Actividad reciente</h3>
+              <h3 className="dashboard-area-stats-title">Indicadores del área</h3>
               <p className="dashboard-section-subtitle">
-                Últimos registros capturados por tu área.
+                Resumen rápido para seguimiento operativo.
               </p>
             </div>
-            <span className="dashboard-section-count">
-              {stats.recentDamages.length} visibles
-            </span>
           </div>
-
-          <div className="dashboard-area-timeline">
-            {stats.recentDamages.map((row) => (
-              <button
-                key={row.id}
-                type="button"
-                className="dashboard-area-timeline-item"
-                onClick={onOpenReports}
-              >
-                <span className="dashboard-area-timeline-date">
-                  {formatShortDate(row.fecha)}
-                </span>
-                <strong>{row.nombrePedido}</strong>
-                <span>{row.motivoDano}</span>
-                <em>{row.cantidadDanada} und.</em>
-              </button>
-            ))}
-            {!stats.loading && stats.recentDamages.length === 0 && (
-              <div className="dashboard-area-empty-state">
-                No hay daños registrados recientemente para esta área.
-              </div>
-            )}
-            {stats.loading && (
-              <div className="dashboard-area-empty-state">
-                Cargando actividad...
-              </div>
-            )}
+          <div className="dashboard-area-widget-grid">
+            <AreaWidget
+              title="Daños hoy"
+              value={stats.loading ? "..." : String(stats.todayDamages)}
+              detail="Registros del día"
+              tone="blue"
+              icon={<DamageIcon />}
+            />
+            <AreaWidget
+              title="Daños del mes"
+              value={stats.loading ? "..." : String(stats.monthDamages)}
+              detail="Acumulado actual"
+              tone="red"
+              icon={<AlertFileIcon />}
+            />
+            <AreaWidget
+              title="Cierres del mes"
+              value={stats.loading ? "..." : String(stats.monthClosures)}
+              detail={
+                stats.lastClosureDate
+                  ? `Último: ${formatShortDate(stats.lastClosureDate)}`
+                  : "Aún sin cierre"
+              }
+              tone="green"
+              icon={<ReportIcon />}
+            />
+            <AreaWidget
+              title="Próximo cierre"
+              value={compactClosingLabel}
+              detail="Corte quincenal programado"
+              tone="orange"
+              icon={<PendingIcon />}
+            />
           </div>
         </section>
 
-        <aside className="dashboard-area-panel dashboard-area-focus-panel">
-          <div className="dashboard-area-progress-head">
-            <span>Preparacion del cierre</span>
-            <strong>{progress}%</strong>
-          </div>
-          <div className="dashboard-progress-track">
-            <div
-              className="dashboard-progress-fill"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <div className="dashboard-area-focus-list">
-            <div>
-              <strong>Captura ordenada</strong>
-              <span>Registra daños con pedido, cantidad y motivo claro.</span>
-            </div>
-            <div>
-              <strong>Revision continua</strong>
-              <span>
-                Consulta reportes antes del cierre para detectar faltantes.
+        <div className="dashboard-area-right-column">
+          <section className="dashboard-area-panel dashboard-area-activity-panel">
+            <div className="dashboard-section-heading">
+              <div>
+                <h3 className="dashboard-area-stats-title">Actividad reciente</h3>
+                <p className="dashboard-section-subtitle">
+                  Últimos registros capturados por tu área.
+                </p>
+              </div>
+              <span className="dashboard-section-count">
+                {stats.recentDamages.length} visibles
               </span>
             </div>
-            <div>
-              <strong>Trazabilidad</strong>
-              <span>
-                Conserva relacion con Trello cuando exista tarjeta vinculada.
-              </span>
+
+            <div className="dashboard-area-timeline">
+              {stats.recentDamages.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  className="dashboard-area-timeline-item"
+                  onClick={onOpenReports}
+                >
+                  <span className="dashboard-area-timeline-date">
+                    {formatShortDate(row.fecha)}
+                  </span>
+                  <strong>{row.nombrePedido}</strong>
+                  <span>{row.motivoDano}</span>
+                  <em>{row.cantidadDanada} und.</em>
+                </button>
+              ))}
+              {!stats.loading && stats.recentDamages.length === 0 && (
+                <div className="dashboard-area-empty-state">
+                  No hay daños registrados recientemente para esta área.
+                </div>
+              )}
+              {stats.loading && (
+                <div className="dashboard-area-empty-state">
+                  Cargando actividad...
+                </div>
+              )}
             </div>
-          </div>
-        </aside>
+          </section>
+        </div>
       </div>
     </div>
   );
