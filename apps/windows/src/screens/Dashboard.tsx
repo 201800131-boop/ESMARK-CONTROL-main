@@ -1476,7 +1476,7 @@ function AreaHome({
               {formatAreaLabel(areaScope)}
             </h2>
             <p className="dashboard-area-subtitle">
-              Monitorea incidencias, registra danos y prepara el cierre del
+              Monitorea incidencias, registra daños y prepara el cierre del
               periodo desde una vista compacta.
             </p>
           </div>
@@ -1549,7 +1549,7 @@ function AreaHome({
           icon={<ReportIcon />}
         />
         <AreaWidget
-          title="Proximo cierre"
+          title="Próximo cierre"
           value={nextClosingLabel.split(",")[0] ?? nextClosingLabel}
           detail={nextClosingLabel}
           tone="orange"
@@ -1563,7 +1563,7 @@ function AreaHome({
             <div>
               <h3 className="dashboard-area-stats-title">Actividad reciente</h3>
               <p className="dashboard-section-subtitle">
-                Ultimos registros capturados por tu area.
+                Últimos registros capturados por tu área.
               </p>
             </div>
             <span className="dashboard-section-count">
@@ -1589,7 +1589,7 @@ function AreaHome({
             ))}
             {!stats.loading && stats.recentDamages.length === 0 && (
               <div className="dashboard-area-empty-state">
-                No hay danos registrados recientemente para esta area.
+                No hay daños registrados recientemente para esta área.
               </div>
             )}
             {stats.loading && (
@@ -1614,7 +1614,7 @@ function AreaHome({
           <div className="dashboard-area-focus-list">
             <div>
               <strong>Captura ordenada</strong>
-              <span>Registra danos con pedido, cantidad y motivo claro.</span>
+              <span>Registra daños con pedido, cantidad y motivo claro.</span>
             </div>
             <div>
               <strong>Revision continua</strong>

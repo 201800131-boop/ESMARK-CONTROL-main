@@ -137,7 +137,7 @@ function toReportRows(
     const areaFromId = areaNameById[areaId];
     const areaFromCode = formatAreaLabel(String(row.area ?? ""));
     const areaLabel =
-      areaFromId || (areaFromCode !== "-" ? areaFromCode : "Sin area");
+      areaFromId || (areaFromCode !== "-" ? areaFromCode : "Sin área");
 
     return [
       String(row.fecha ?? row.fecha_registro ?? "").slice(0, 10),
@@ -1344,7 +1344,7 @@ export function ReportesScreen({
     if (user.role !== "admin") return;
     const recordId = getRowString(row, "id");
     if (!recordId) {
-      setError("No se encontro el ID del cierre.");
+      setError("No se encontró el ID del cierre.");
       return;
     }
 
@@ -1400,7 +1400,7 @@ export function ReportesScreen({
     }
 
     if (areaCode !== "all" && !areaId) {
-      setError("No se encontro el area del cierre para descargar.");
+      setError("No se encontró el área del cierre para descargar.");
       return;
     }
 
@@ -1443,7 +1443,7 @@ export function ReportesScreen({
       areaNameById,
       `cierre_${areaCode || "area"}_${from}_${to}.xlsx`,
       "Reporte de Pedidos Danados - ESMARK Control",
-      `Area: ${areaLabel} | Rango: ${from} a ${to} | Registros: ${closureRows.length}`,
+      `Área: ${areaLabel} | Rango: ${from} a ${to} | Registros: ${closureRows.length}`,
     );
 
     setSuccess("Excel descargado.");
@@ -1701,7 +1701,7 @@ export function ReportesScreen({
                   <thead>
                     <tr>
                       <th style={styles.th}>Fecha de cierre</th>
-                      <th style={styles.th}>Areas incluidas</th>
+                      <th style={styles.th}>Áreas incluidas</th>
                       <th style={styles.th}>Rango</th>
                       <th style={styles.th}>Generado por</th>
                       <th style={styles.th}>Acciones</th>
@@ -1790,7 +1790,7 @@ export function ReportesScreen({
                         Cierres del {selectedClosureGroup.date}
                       </h3>
                       <p style={styles.modalSubtitle}>
-                        Areas incluidas en este cierre manual.
+                        Áreas incluidas en este cierre manual.
                       </p>
                     </div>
                     <button
@@ -1843,7 +1843,7 @@ export function ReportesScreen({
                               >
                                 {downloadingClosureId === String(row.id ?? "")
                                   ? "Descargando..."
-                                  : "Descargar area"}
+                                  : "Descargar área"}
                               </button>
                               <button
                                 type="button"

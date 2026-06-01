@@ -6,7 +6,7 @@ import { Dashboard } from './screens/Dashboard';
 
 type AppState = 'loading' | 'login' | 'dashboard';
 
-const UPDATE_NOTICE_VERSION = 'dashboard-reportes-v1-0-36';
+const UPDATE_NOTICE_VERSION = 'dashboard-reportes-v1-0-37';
 const UPDATE_NOTICE_KEY = `esmark-update-notice-${UPDATE_NOTICE_VERSION}`;
 const SUPABASE_SPACE_NOTICE_KEY = 'esmark.supabaseSpace.last90Notice';
 const SUPABASE_SPACE_CHECK_MS = 30 * 60 * 1000;
@@ -281,22 +281,22 @@ function UpdateNotice({ onClose }: { onClose: () => void }): React.JSX.Element {
     <div style={noticeStyles.backdrop} role="dialog" aria-modal="true">
       <section style={noticeStyles.panel}>
         <div style={noticeStyles.header}>
-          <span style={noticeStyles.kicker}>Actualizacion disponible</span>
+          <span style={noticeStyles.kicker}>Actualización disponible</span>
           <h1 style={noticeStyles.title}>Nuevas mejoras de control</h1>
           <p style={noticeStyles.text}>
-            Esta version mejora el panel de control, el registro de danos y la
-            revision de reportes desde administracion y areas.
+            Esta versión mejora el panel de control, el registro de daños y la
+            revisión de reportes desde administración y áreas.
           </p>
         </div>
 
         <div style={noticeStyles.grid}>
           <NoticeItem
             title="Panel con detalle"
-            text="Las tarjetas del panel ahora se pueden abrir para revisar pedidos, reportes, areas y unidades danadas."
+            text="Las tarjetas del panel ahora se pueden abrir para revisar pedidos, reportes, áreas y unidades dañadas."
           />
           <NoticeItem
-            title="Registro de danos"
-            text="Se agrego cantidad danada, tipo de dano, responsable por categoria y mejor guardado de observaciones."
+            title="Registro de daños"
+            text="Se agregó cantidad dañada, tipo de daño, responsable por categoría y mejor guardado de observaciones."
           />
           <NoticeItem
             title="Cierres y respaldos"
