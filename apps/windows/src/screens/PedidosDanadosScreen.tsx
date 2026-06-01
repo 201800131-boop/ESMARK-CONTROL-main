@@ -41,6 +41,7 @@ function normalizeTrelloCard(item: AnyObject): TrelloCardItem {
 
 const DEFAULT_TRELLO_BOARD_ID = import.meta.env.VITE_TRELLO_BOARD_ID ?? '3cv4PjjJ';
 const TRELLO_FAVORITES_KEY = 'esmark.trello.favoriteLists';
+type ResponsableTipo = 'responsable' | 'area_responsable' | 'problemas_tecnicos' | 'otros';
 
 function normalizeBoardId(rawValue: string): string {
   const value = rawValue.trim();
@@ -130,7 +131,10 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
   const [rows, setRows] = React.useState<AnyRow[]>([]);
 
   const [nombrePedido, setNombrePedido] = React.useState('');
+  const [cantidadDanada, setCantidadDanada] = React.useState('1');
   const [tipoTrabajo, setTipoTrabajo] = React.useState('');
+  const [tipoDano, setTipoDano] = React.useState('');
+  const [responsableTipo, setResponsableTipo] = React.useState<ResponsableTipo>('responsable');
   const [personaDano, setPersonaDano] = React.useState('');
   const [motivoDano, setMotivoDano] = React.useState('');
   const [observacion, setObservacion] = React.useState('');
@@ -405,9 +409,33 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
     setError(null);
     setSuccess(null);
 
-    const qty = 1;
-    if (!nombrePedido.trim() || !personaDano.trim() || !motivoDano.trim()) {
-      setError('Completa los campos obligatorios: nombre del pedido, responsable del incidente y motivo.');
+    const qty = Number(cantidadDanada);
+    const responsableValue =
+      responsableTipo === 'responsable'
+        ? `Responsable: ${personaDano.trim()}`
+        : responsableTipo === 'area_responsable'
+          ? `Área responsable: ${personaDano.trim()}`
+          : responsableTipo === 'problemas_tecnicos'
+            ? 'Problemas técnicos'
+            : 'Otros';
+
+    if (!nombrePedido.trim() || !motivoDano.trim()) {
+      setError('Completa los campos obligatorios: nombre del pedido y motivo.');
+      return;
+    }
+    if (
+      (responsableTipo === 'responsable' || responsableTipo === 'area_responsable') &&
+      !personaDano.trim()
+    ) {
+      setError(
+        responsableTipo === 'responsable'
+          ? 'Ingresa el nombre del responsable.'
+          : 'Ingresa el área responsable.',
+      );
+      return;
+    }
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setError('Ingresa una cantidad dañada válida.');
       return;
     }
 
@@ -424,7 +452,10 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
       nombre_pedido: nombrePedido.trim(),
       cantidad_danada: qty,
       motivo_dano: motivoDano.trim(),
-      persona_dano: personaDano.trim(),
+      tipo_trabajo: tipoTrabajo.trim() || undefined,
+      tipo_dano: tipoDano.trim() || undefined,
+      persona_dano: responsableValue,
+      observacion: observacion.trim() || undefined,
       area_id: areaId,
       trello_card_id: selectedCard?.id || undefined,
       trello_card_name: selectedCard?.name || undefined,
@@ -453,7 +484,8 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
         cantidad_danada: qty,
         motivo_dano: motivoDano.trim(),
         tipo_trabajo: tipoTrabajo.trim() || undefined,
-        persona_dano: personaDano.trim() || undefined,
+        tipo_dano: tipoDano.trim() || undefined,
+        persona_dano: responsableValue,
         observacion: observacion.trim() || undefined,
         trello_card_id: selectedCard?.id || undefined,
         trello_card_name: selectedCard?.name || undefined,
@@ -480,7 +512,10 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
     }
 
     setNombrePedido('');
+    setCantidadDanada('1');
     setTipoTrabajo('');
+    setTipoDano('');
+    setResponsableTipo('responsable');
     setPersonaDano('');
     setMotivoDano('');
     setObservacion('');
@@ -760,8 +795,42 @@ export function PedidosDanadosScreen({ user }: Props): React.JSX.Element {
 
             <div style={styles.gridForm}>
               <input style={{ ...styles.input, ...styles.span2 }} placeholder="Nombre del pedido *" value={nombrePedido} onChange={(e) => setNombrePedido(e.target.value)} />
+              <input
+                style={styles.input}
+                type="number"
+                min="1"
+                step="1"
+                placeholder="Cantidad dañada *"
+                value={cantidadDanada}
+                onChange={(e) => setCantidadDanada(e.target.value)}
+              />
               <input style={styles.input} placeholder="Tipo de trabajo" value={tipoTrabajo} onChange={(e) => setTipoTrabajo(e.target.value)} />
-              <input style={styles.input} placeholder="Responsable del incidente *" value={personaDano} onChange={(e) => setPersonaDano(e.target.value)} required />
+              <input style={styles.input} placeholder="Tipo de daño" value={tipoDano} onChange={(e) => setTipoDano(e.target.value)} />
+              <select
+                style={{ ...styles.input, ...styles.selectInput }}
+                value={responsableTipo}
+                onChange={(e) => {
+                  const next = e.target.value as ResponsableTipo;
+                  setResponsableTipo(next);
+                  if (next === 'problemas_tecnicos' || next === 'otros') {
+                    setPersonaDano('');
+                  }
+                }}
+              >
+                <option value="responsable">Responsable</option>
+                <option value="area_responsable">Área responsable</option>
+                <option value="problemas_tecnicos">Problemas técnicos</option>
+                <option value="otros">Otros</option>
+              </select>
+              {(responsableTipo === 'responsable' || responsableTipo === 'area_responsable') && (
+                <input
+                  style={styles.input}
+                  placeholder={responsableTipo === 'responsable' ? 'Nombre del responsable *' : 'Área responsable *'}
+                  value={personaDano}
+                  onChange={(e) => setPersonaDano(e.target.value)}
+                  required
+                />
+              )}
             </div>
 
             {selectedCard && (
@@ -1079,6 +1148,16 @@ const styles: Record<string, React.CSSProperties> = {
   },
   detailGrid: { display: 'grid', gridTemplateColumns: '1fr', gap: 10 },
   input: { padding: '11px 12px', border: '1px solid #d1d5db', borderRadius: 10, fontSize: 14, background: '#fff' },
+  selectInput: {
+    paddingRight: 44,
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    backgroundImage:
+      "linear-gradient(45deg, transparent 50%, #0f172a 50%), linear-gradient(135deg, #0f172a 50%, transparent 50%)",
+    backgroundPosition: 'calc(100% - 22px) 50%, calc(100% - 16px) 50%',
+    backgroundSize: '6px 6px, 6px 6px',
+    backgroundRepeat: 'no-repeat',
+  },
   textarea: {
     padding: '12px 12px',
     border: '1px solid #d1d5db',

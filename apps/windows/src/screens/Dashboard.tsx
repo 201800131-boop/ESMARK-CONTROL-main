@@ -18,6 +18,7 @@ type Section =
   | "historial"
   | "usuarios";
 type PeriodFilter = "hoy" | "semana" | "mes" | "todo";
+type AdminDetailMode = "pedidos" | "reportes" | "areas" | "unidades";
 
 const DASHBOARD_SECTION_KEY = "esmark.dashboard.section";
 const BRAND_LOGO_PRIMARY = "esmark-logo.png";
@@ -32,7 +33,7 @@ interface AdminStats {
   totalPedidos: number;
   totalReportes: number;
   areasActivas: number;
-  pendientes: number;
+  unidadesDanadas: number;
 }
 
 interface AreaStatRow {
@@ -40,6 +41,24 @@ interface AreaStatRow {
   areaName: string;
   pedidos: number;
   cierres: number;
+}
+
+interface AdminPedidoDetailRow {
+  id: string;
+  fecha: string;
+  areaName: string;
+  nombrePedido: string;
+  cantidadDanada: number;
+  tipoDano: string;
+  tipoTrabajo: string;
+}
+
+interface AdminReporteDetailRow {
+  id: string;
+  fecha: string;
+  areaName: string;
+  periodo: string;
+  generadoPor: string;
 }
 
 interface AreaDamageRow {
@@ -70,6 +89,10 @@ interface OnlinePresence {
 
 interface NextClosureInfo {
   fecha_inicio?: string | null;
+  fecha_fin?: string | null;
+}
+
+interface ClosureDateSource {
   fecha_fin?: string | null;
 }
 
@@ -118,6 +141,69 @@ function parseClosureDate(value?: string | null): Date | null {
     : value;
   const date = new Date(normalized);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function toDateKey(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(value: Date, days: number): Date {
+  const next = new Date(value);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function getPeriodStart(value: Date): Date {
+  return new Date(
+    value.getFullYear(),
+    value.getMonth(),
+    value.getDate() <= 15 ? 1 : 16,
+  );
+}
+
+function getPeriodEnd(value: Date): Date {
+  if (value.getDate() <= 15) {
+    return new Date(value.getFullYear(), value.getMonth(), 15);
+  }
+  return new Date(value.getFullYear(), value.getMonth() + 1, 0);
+}
+
+function computeNextClosureInfo(
+  latestClosure?: ClosureDateSource | null,
+): NextClosureInfo {
+  const today = new Date();
+  let start = getPeriodStart(today);
+  const latestEnd = parseClosureDate(latestClosure?.fecha_fin);
+
+  if (latestEnd) {
+    start = addDays(latestEnd, 1);
+  }
+
+  let end = getPeriodEnd(start);
+  while (end < getPeriodStart(today)) {
+    start = addDays(end, 1);
+    end = getPeriodEnd(start);
+  }
+
+  return {
+    fecha_inicio: toDateKey(start),
+    fecha_fin: toDateKey(end),
+  };
+}
+
+function isClosureInfoExpired(info?: NextClosureInfo | null): boolean {
+  const end = parseClosureDate(info?.fecha_fin);
+  if (!end) return true;
+  const today = new Date();
+  const todayStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+  return end < todayStart;
 }
 
 function formatNextClosureLabel(info?: NextClosureInfo | null): string {
@@ -176,10 +262,18 @@ export function Dashboard({
     totalPedidos: 0,
     totalReportes: 0,
     areasActivas: 0,
-    pendientes: 0,
+    unidadesDanadas: 0,
   });
   const [areaStatsRows, setAreaStatsRows] = React.useState<AreaStatRow[]>([]);
-  const [periodFilter, setPeriodFilter] = React.useState<PeriodFilter>("hoy");
+  const [adminPedidoDetails, setAdminPedidoDetails] = React.useState<
+    AdminPedidoDetailRow[]
+  >([]);
+  const [adminReporteDetails, setAdminReporteDetails] = React.useState<
+    AdminReporteDetailRow[]
+  >([]);
+  const [activeAdminDetail, setActiveAdminDetail] =
+    React.useState<AdminDetailMode | null>(null);
+  const [periodFilter, setPeriodFilter] = React.useState<PeriodFilter>("todo");
   const [logoSrc, setLogoSrc] = React.useState(BRAND_LOGO_PRIMARY);
   const [onlineUserIds, setOnlineUserIds] = React.useState<Set<string>>(
     () => new Set([user.id]),
@@ -206,16 +300,45 @@ export function Dashboard({
           ),
         )
       : 0;
+
+  const loadNextClosureFromVisibleReports =
+    React.useCallback(async (): Promise<NextClosureInfo> => {
+      let query = supabase
+        .from("reportes_generados")
+        .select("fecha_fin,created_at,area")
+        .not("fecha_fin", "is", null)
+        .order("fecha_fin", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (isAdmin) {
+        query = query.neq("area", "administracion");
+      } else {
+        query = query.eq("area", normalizeAreaCode(areaScope));
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        return computeNextClosureInfo(null);
+      }
+
+      return computeNextClosureInfo(
+        ((data ?? [])[0] ?? null) as ClosureDateSource | null,
+      );
+    }, [areaScope, isAdmin]);
+
   const loadNextClosureInfo = React.useCallback(async (): Promise<void> => {
     const { data, error } = await supabase.rpc("obtener_info_proximo_cierre");
+    const rpcInfo = data as NextClosureInfo | null;
 
-    if (error) {
-      setNextClosingLabel("Pendiente de cierre");
+    if (error || isClosureInfoExpired(rpcInfo)) {
+      const fallbackInfo = await loadNextClosureFromVisibleReports();
+      setNextClosingLabel(formatNextClosureLabel(fallbackInfo));
       return;
     }
 
-    setNextClosingLabel(formatNextClosureLabel(data as NextClosureInfo));
-  }, []);
+    setNextClosingLabel(formatNextClosureLabel(rpcInfo));
+  }, [loadNextClosureFromVisibleReports]);
 
   React.useEffect(() => {
     window.localStorage.setItem(DASHBOARD_SECTION_KEY, section);
@@ -312,8 +435,16 @@ export function Dashboard({
 
       const [areasRes, pedidosRes, reportesRes] = await Promise.all([
         supabase.from("areas").select("id,code,nombre"),
-        supabase.from("pedidos_danados").select("area_id,fecha,fecha_registro"),
-        supabase.from("reportes_generados").select("area,created_at"),
+        supabase
+          .from("pedidos_danados")
+          .select(
+            "id,area_id,fecha,fecha_registro,nombre_pedido,cantidad_danada,tipo_dano,tipo_trabajo",
+          ),
+        supabase
+          .from("reportes_generados")
+          .select(
+            "id,area,created_at,fecha_inicio,fecha_fin,generado_por_nombre",
+          ),
       ]);
 
       const areas = (areasRes.data ?? []) as Array<{
@@ -322,13 +453,22 @@ export function Dashboard({
         nombre: string;
       }>;
       const pedidosRaw = (pedidosRes.data ?? []) as Array<{
+        id?: string | null;
         area_id?: string | null;
         fecha?: string | null;
         fecha_registro?: string | null;
+        nombre_pedido?: string | null;
+        cantidad_danada?: number | null;
+        tipo_dano?: string | null;
+        tipo_trabajo?: string | null;
       }>;
       const reportesRaw = (reportesRes.data ?? []) as Array<{
+        id?: string | null;
         area?: string | null;
         created_at?: string | null;
+        fecha_inicio?: string | null;
+        fecha_fin?: string | null;
+        generado_por_nombre?: string | null;
       }>;
 
       const now = new Date();
@@ -394,10 +534,48 @@ export function Dashboard({
       const areasActivas = rows.filter(
         (row) => row.pedidos > 0 || row.cierres > 0,
       ).length;
-      const pendientes = Math.max(totalPedidos - totalReportes, 0);
+      const unidadesDanadas = pedidos.reduce(
+        (total, pedido) => total + Number(pedido.cantidad_danada ?? 0),
+        0,
+      );
+      const pedidoDetails = pedidos.map((pedido) => {
+        const areaCode =
+          areaIdToCode.get(String(pedido.area_id ?? "")) ?? "sin_area";
+        return {
+          id: String(pedido.id ?? `${areaCode}-${pedido.fecha_registro ?? ""}`),
+          fecha: String(pedido.fecha ?? pedido.fecha_registro ?? ""),
+          areaName: areaCodeToName.get(areaCode) ?? formatAreaLabel(areaCode),
+          nombrePedido: String(pedido.nombre_pedido ?? "Sin nombre"),
+          cantidadDanada: Number(pedido.cantidad_danada ?? 0),
+          tipoDano: String(pedido.tipo_dano ?? ""),
+          tipoTrabajo: String(pedido.tipo_trabajo ?? ""),
+        };
+      });
+      const reporteDetails = reportes.map((report) => {
+        const areaCode = normalizeAreaCode(report.area ?? "");
+        const fechaInicio = String(report.fecha_inicio ?? "").slice(0, 10);
+        const fechaFin = String(report.fecha_fin ?? "").slice(0, 10);
+        return {
+          id: String(report.id ?? `${areaCode}-${report.created_at ?? ""}`),
+          fecha: String(report.created_at ?? ""),
+          areaName: areaCodeToName.get(areaCode) ?? formatAreaLabel(areaCode),
+          periodo:
+            fechaInicio || fechaFin
+              ? `${fechaInicio || "?"} a ${fechaFin || "?"}`
+              : "Sin periodo",
+          generadoPor: String(report.generado_por_nombre ?? "Sin usuario"),
+        };
+      });
 
       setAreaStatsRows(rows);
-      setAdminStats({ totalPedidos, totalReportes, areasActivas, pendientes });
+      setAdminPedidoDetails(pedidoDetails);
+      setAdminReporteDetails(reporteDetails);
+      setAdminStats({
+        totalPedidos,
+        totalReportes,
+        areasActivas,
+        unidadesDanadas,
+      });
       setLoadingAdminStats(false);
     }
 
@@ -719,6 +897,8 @@ export function Dashboard({
                 tone="red"
                 icon={<DamageIcon />}
                 detail="Incidencias registradas"
+                active={activeAdminDetail === "pedidos"}
+                onClick={() => setActiveAdminDetail("pedidos")}
               />
               <StatCard
                 title="Reportes generados"
@@ -728,6 +908,8 @@ export function Dashboard({
                 tone="blue"
                 icon={<ReportIcon />}
                 detail="Cierres guardados"
+                active={activeAdminDetail === "reportes"}
+                onClick={() => setActiveAdminDetail("reportes")}
               />
               <StatCard
                 title="Áreas activas"
@@ -737,17 +919,174 @@ export function Dashboard({
                 tone="green"
                 icon={<AreasIcon />}
                 detail="Con movimiento"
+                active={activeAdminDetail === "areas"}
+                onClick={() => setActiveAdminDetail("areas")}
               />
               <StatCard
-                title="Pendientes"
+                title="Unidades dañadas"
                 value={
-                  loadingAdminStats ? "..." : String(adminStats.pendientes)
+                  loadingAdminStats
+                    ? "..."
+                    : String(adminStats.unidadesDanadas)
                 }
                 tone="orange"
                 icon={<PendingIcon />}
-                detail="Sin cierre asociado"
+                detail="Cantidad total afectada"
+                active={activeAdminDetail === "unidades"}
+                onClick={() => setActiveAdminDetail("unidades")}
               />
             </div>
+
+            {activeAdminDetail && (
+              <section className="dashboard-stat-detail-panel">
+                <div className="dashboard-section-heading">
+                  <div>
+                    <h3 className="dashboard-area-stats-title">
+                      {activeAdminDetail === "pedidos" &&
+                        "Detalle de pedidos dañados"}
+                      {activeAdminDetail === "reportes" &&
+                        "Detalle de reportes generados"}
+                      {activeAdminDetail === "areas" &&
+                        "Detalle de áreas activas"}
+                      {activeAdminDetail === "unidades" &&
+                        "Detalle de unidades dañadas"}
+                    </h3>
+                    <p className="dashboard-section-subtitle">
+                      Periodo seleccionado: {getPeriodLabel(periodFilter)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="dashboard-detail-close"
+                    onClick={() => setActiveAdminDetail(null)}
+                    aria-label="Cerrar detalle"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+
+                {(activeAdminDetail === "pedidos" ||
+                  activeAdminDetail === "unidades") && (
+                  <table className="dashboard-area-stats-table">
+                    <thead>
+                      <tr>
+                        <th className="dashboard-area-stats-th">Fecha</th>
+                        <th className="dashboard-area-stats-th">Área</th>
+                        <th className="dashboard-area-stats-th">Pedido</th>
+                        <th className="dashboard-area-stats-th">Cantidad</th>
+                        <th className="dashboard-area-stats-th">Tipo daño</th>
+                        <th className="dashboard-area-stats-th">Trabajo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adminPedidoDetails.map((row) => (
+                        <tr key={row.id}>
+                          <td className="dashboard-area-stats-td">
+                            {String(row.fecha).slice(0, 10) || "-"}
+                          </td>
+                          <td className="dashboard-area-stats-td">
+                            {row.areaName}
+                          </td>
+                          <td className="dashboard-area-stats-td">
+                            {row.nombrePedido}
+                          </td>
+                          <td className="dashboard-area-stats-td dashboard-number-cell">
+                            {row.cantidadDanada}
+                          </td>
+                          <td className="dashboard-area-stats-td">
+                            {row.tipoDano || "-"}
+                          </td>
+                          <td className="dashboard-area-stats-td">
+                            {row.tipoTrabajo || "-"}
+                          </td>
+                        </tr>
+                      ))}
+                      {adminPedidoDetails.length === 0 && (
+                        <tr>
+                          <td className="dashboard-area-stats-td" colSpan={6}>
+                            Sin pedidos dañados en este periodo.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
+
+                {activeAdminDetail === "reportes" && (
+                  <table className="dashboard-area-stats-table">
+                    <thead>
+                      <tr>
+                        <th className="dashboard-area-stats-th">Fecha</th>
+                        <th className="dashboard-area-stats-th">Área</th>
+                        <th className="dashboard-area-stats-th">Periodo</th>
+                        <th className="dashboard-area-stats-th">
+                          Generado por
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adminReporteDetails.map((row) => (
+                        <tr key={row.id}>
+                          <td className="dashboard-area-stats-td">
+                            {formatShortDate(row.fecha)}
+                          </td>
+                          <td className="dashboard-area-stats-td">
+                            {row.areaName}
+                          </td>
+                          <td className="dashboard-area-stats-td">
+                            {row.periodo}
+                          </td>
+                          <td className="dashboard-area-stats-td">
+                            {row.generadoPor}
+                          </td>
+                        </tr>
+                      ))}
+                      {adminReporteDetails.length === 0 && (
+                        <tr>
+                          <td className="dashboard-area-stats-td" colSpan={4}>
+                            Sin reportes generados en este periodo.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
+
+                {activeAdminDetail === "areas" && (
+                  <table className="dashboard-area-stats-table">
+                    <thead>
+                      <tr>
+                        <th className="dashboard-area-stats-th">Área</th>
+                        <th className="dashboard-area-stats-th">Pedidos</th>
+                        <th className="dashboard-area-stats-th">Cierres</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {areaStatsRows.map((row) => (
+                        <tr key={row.areaCode}>
+                          <td className="dashboard-area-stats-td">
+                            {formatAreaLabel(row.areaName)}
+                          </td>
+                          <td className="dashboard-area-stats-td dashboard-number-cell">
+                            {row.pedidos}
+                          </td>
+                          <td className="dashboard-area-stats-td dashboard-number-cell">
+                            {row.cierres}
+                          </td>
+                        </tr>
+                      ))}
+                      {areaStatsRows.length === 0 && (
+                        <tr>
+                          <td className="dashboard-area-stats-td" colSpan={3}>
+                            Sin áreas activas en este periodo.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+            )}
 
             <div className="dashboard-admin-grid">
               <section className="dashboard-area-stats-section">
@@ -947,15 +1286,21 @@ function StatCard({
   tone,
   icon,
   detail,
+  active,
+  onClick,
 }: {
   title: string;
   value: string;
   tone: "red" | "blue" | "green" | "orange";
   icon: React.ReactNode;
   detail?: string;
+  active?: boolean;
+  onClick?: () => void;
 }): React.JSX.Element {
+  const cardClassName = `dashboard-stat-card border-${tone}${active ? " dashboard-stat-card-active" : ""}${onClick ? " dashboard-stat-card-clickable" : ""}`;
+
   return (
-    <div className={`dashboard-stat-card border-${tone}`}>
+    <button type="button" className={cardClassName} onClick={onClick}>
       <div className="dashboard-stat-topline">
         <span className="dashboard-stat-icon" aria-hidden="true">
           {icon}
@@ -964,7 +1309,7 @@ function StatCard({
       </div>
       <span className="dashboard-stat-label">{title}</span>
       {detail && <span className="dashboard-stat-detail">{detail}</span>}
-    </div>
+    </button>
   );
 }
 

@@ -42,6 +42,16 @@ interface ClosureGroup {
   rows: AnyRow[];
 }
 
+interface ZipFileEntry {
+  name: string;
+  data: Uint8Array;
+}
+
+const CLOSURE_BACKUP_REMINDER_KEY = "esmark.closureBackup.lastDownload";
+const CLOSURE_BACKUP_REMINDER_DAYS = 60;
+const ZIP_ENCODER = new TextEncoder();
+let crcTable: Uint32Array | null = null;
+
 function normalizeLookupCard(item: Record<string, unknown>): TrelloLookupCard {
   const descValue =
     typeof item.desc === "string"
@@ -95,14 +105,14 @@ function getLatestClosureCreatedAt(rows: AnyRow[]): string | null {
 
 const REPORT_HEADERS = [
   "Fecha",
-  "Area",
+  "Área",
   "Pedido",
-  "Cantidad danada",
-  "Motivo dano",
+  "Cantidad dañada",
+  "Motivo daño",
   "Tipo trabajo",
-  "Tipo dano",
-  "Persona dano",
-  "Observacion",
+  "Tipo daño",
+  "Persona daño",
+  "Observación",
 ] as const;
 
 let xlsxPromise: Promise<XlsxModule> | null = null;
@@ -235,13 +245,30 @@ function downloadWorkbook(
   workbook: AnyRow,
   filename: string,
 ): void {
+  const workbookData = writeWorkbookBytes(XLSX, workbook);
+  const blob = new Blob([toArrayBuffer(workbookData)], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  downloadBlob(blob, filename);
+}
+
+function toArrayBuffer(data: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(data.byteLength);
+  copy.set(data);
+  return copy.buffer;
+}
+
+function writeWorkbookBytes(XLSX: XlsxModule, workbook: AnyRow): Uint8Array {
   const workbookData = XLSX.write(workbook, {
     bookType: "xlsx",
     type: "array",
-  });
-  const blob = new Blob([workbookData], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+  }) as ArrayBuffer | Uint8Array;
+  return workbookData instanceof Uint8Array
+    ? workbookData
+    : new Uint8Array(workbookData);
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -250,6 +277,119 @@ function downloadWorkbook(
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function getCrcTable(): Uint32Array {
+  if (crcTable) return crcTable;
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i += 1) {
+    let c = i;
+    for (let k = 0; k < 8; k += 1) {
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[i] = c >>> 0;
+  }
+  crcTable = table;
+  return table;
+}
+
+function crc32(data: Uint8Array): number {
+  const table = getCrcTable();
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc = table[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function writeUint16(target: number[], value: number): void {
+  target.push(value & 0xff, (value >>> 8) & 0xff);
+}
+
+function writeUint32(target: number[], value: number): void {
+  target.push(
+    value & 0xff,
+    (value >>> 8) & 0xff,
+    (value >>> 16) & 0xff,
+    (value >>> 24) & 0xff,
+  );
+}
+
+function getDosDateTime(value = new Date()): { date: number; time: number } {
+  const year = Math.max(1980, value.getFullYear());
+  return {
+    date: ((year - 1980) << 9) | ((value.getMonth() + 1) << 5) | value.getDate(),
+    time:
+      (value.getHours() << 11) |
+      (value.getMinutes() << 5) |
+      Math.floor(value.getSeconds() / 2),
+  };
+}
+
+function createZipBlob(files: ZipFileEntry[]): Blob {
+  const chunks: BlobPart[] = [];
+  const centralDirectory: number[] = [];
+  let offset = 0;
+  const { date, time } = getDosDateTime();
+
+  for (const file of files) {
+    const filename = ZIP_ENCODER.encode(file.name.replace(/\\/g, "/"));
+    const checksum = crc32(file.data);
+    const localHeader: number[] = [];
+
+    writeUint32(localHeader, 0x04034b50);
+    writeUint16(localHeader, 20);
+    writeUint16(localHeader, 0x0800);
+    writeUint16(localHeader, 0);
+    writeUint16(localHeader, time);
+    writeUint16(localHeader, date);
+    writeUint32(localHeader, checksum);
+    writeUint32(localHeader, file.data.byteLength);
+    writeUint32(localHeader, file.data.byteLength);
+    writeUint16(localHeader, filename.byteLength);
+    writeUint16(localHeader, 0);
+
+    const localBytes = new Uint8Array(localHeader);
+    chunks.push(toArrayBuffer(localBytes), toArrayBuffer(filename), toArrayBuffer(file.data));
+
+    writeUint32(centralDirectory, 0x02014b50);
+    writeUint16(centralDirectory, 20);
+    writeUint16(centralDirectory, 20);
+    writeUint16(centralDirectory, 0x0800);
+    writeUint16(centralDirectory, 0);
+    writeUint16(centralDirectory, time);
+    writeUint16(centralDirectory, date);
+    writeUint32(centralDirectory, checksum);
+    writeUint32(centralDirectory, file.data.byteLength);
+    writeUint32(centralDirectory, file.data.byteLength);
+    writeUint16(centralDirectory, filename.byteLength);
+    writeUint16(centralDirectory, 0);
+    writeUint16(centralDirectory, 0);
+    writeUint16(centralDirectory, 0);
+    writeUint16(centralDirectory, 0);
+    writeUint32(centralDirectory, 0);
+    writeUint32(centralDirectory, offset);
+    centralDirectory.push(...filename);
+
+    offset += localBytes.byteLength + filename.byteLength + file.data.byteLength;
+  }
+
+  const centralOffset = offset;
+  const centralBytes = new Uint8Array(centralDirectory);
+  chunks.push(toArrayBuffer(centralBytes));
+
+  const end: number[] = [];
+  writeUint32(end, 0x06054b50);
+  writeUint16(end, 0);
+  writeUint16(end, 0);
+  writeUint16(end, files.length);
+  writeUint16(end, files.length);
+  writeUint32(end, centralBytes.byteLength);
+  writeUint32(end, centralOffset);
+  writeUint16(end, 0);
+  chunks.push(toArrayBuffer(new Uint8Array(end)));
+
+  return new Blob(chunks, { type: "application/zip" });
 }
 
 function sanitizeSheetName(value: string): string {
@@ -272,6 +412,45 @@ function groupClosuresByDate(rows: AnyRow[]): ClosureGroup[] {
       ),
     }))
     .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function groupClosureGroupsByMonth(groups: ClosureGroup[]): Map<string, ClosureGroup[]> {
+  const byMonth = new Map<string, ClosureGroup[]>();
+  for (const group of groups) {
+    const month = group.date.slice(0, 7) || "sin-fecha";
+    byMonth.set(month, [...(byMonth.get(month) ?? []), group]);
+  }
+  return byMonth;
+}
+
+function getClosureDateRange(group: ClosureGroup): { from: string; to: string } | null {
+  const dates = group.rows
+    .flatMap((row) => [
+      String(row.fecha_inicio ?? "").slice(0, 10),
+      String(row.fecha_fin ?? "").slice(0, 10),
+    ])
+    .filter(Boolean);
+  const from = [...dates].sort((a, b) => a.localeCompare(b))[0];
+  const to = [...dates].sort((a, b) => b.localeCompare(a))[0];
+  return from && to ? { from, to } : null;
+}
+
+function filterRowsByDateRange(rows: AnyRow[], from: string, to: string): AnyRow[] {
+  return rows.filter((item) => {
+    const raw = item.fecha ?? item.fecha_registro;
+    if (!raw) return true;
+    const normalized = String(raw).slice(0, 10);
+    return normalized >= from && normalized <= to;
+  });
+}
+
+function shouldShowBackupReminder(): boolean {
+  const raw = window.localStorage.getItem(CLOSURE_BACKUP_REMINDER_KEY);
+  if (!raw) return true;
+  const last = new Date(raw);
+  if (Number.isNaN(last.getTime())) return true;
+  const ageMs = Date.now() - last.getTime();
+  return ageMs >= CLOSURE_BACKUP_REMINDER_DAYS * 24 * 60 * 60 * 1000;
 }
 
 function humanizeKey(key: string): string {
@@ -409,6 +588,9 @@ export function ReportesScreen({
   const [downloadingClosureId, setDownloadingClosureId] = React.useState<
     string | null
   >(null);
+  const [downloadingMonthlyBackup, setDownloadingMonthlyBackup] =
+    React.useState(false);
+  const [backupReminderDue, setBackupReminderDue] = React.useState(false);
   const [trelloCatalog, setTrelloCatalog] = React.useState<
     TrelloLookupCard[] | null
   >(null);
@@ -419,6 +601,7 @@ export function ReportesScreen({
   const [historyTab, setHistoryTab] = React.useState<HistoryTab>("cierres");
   const [historyReportsLoaded, setHistoryReportsLoaded] =
     React.useState(false);
+  const backupReminderNotifiedRef = React.useRef(false);
 
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = `${today.slice(0, 8)}01`;
@@ -432,6 +615,10 @@ export function ReportesScreen({
   const closureGroups = React.useMemo(
     () => groupClosuresByDate(closureRows),
     [closureRows],
+  );
+  const closureBackupMonths = React.useMemo(
+    () => groupClosureGroupsByMonth(closureGroups),
+    [closureGroups],
   );
   const historyRows = React.useMemo(
     () =>
@@ -455,6 +642,15 @@ export function ReportesScreen({
     }
     return next;
   }, [areaIdByCode]);
+
+  const canEditReport = React.useCallback(
+    (row: AnyRow) => {
+      if (user.role === "admin") return true;
+      return Boolean(userAreaId && String(row.area_id ?? "") === userAreaId);
+    },
+    [user.role, userAreaId],
+  );
+
   const areaSections = React.useMemo<AreaReportSection[]>(() => {
     const sections = areaOptions
       .filter(
@@ -677,6 +873,26 @@ export function ReportesScreen({
       return;
     void loadRows();
   }, [historyOnly, historyReportsLoaded, historyTab, loadRows]);
+
+  React.useEffect(() => {
+    if (user.role !== "admin") {
+      setBackupReminderDue(false);
+      return;
+    }
+    const due = closureGroups.length > 0 && shouldShowBackupReminder();
+    setBackupReminderDue(due);
+    if (
+      due &&
+      !backupReminderNotifiedRef.current &&
+      "Notification" in window &&
+      window.Notification.permission === "granted"
+    ) {
+      backupReminderNotifiedRef.current = true;
+      new window.Notification("Respaldo local pendiente", {
+        body: "Los cierres siguen en Supabase; descarga una copia local por mes como respaldo adicional.",
+      });
+    }
+  }, [closureGroups.length, user.role]);
 
   React.useEffect(() => {
     void loadClosures();
@@ -967,7 +1183,10 @@ export function ReportesScreen({
   }
 
   function startEditReport(row: AnyRow): void {
-    if (user.role !== "admin") return;
+    if (!canEditReport(row)) {
+      setError("Solo puedes editar reportes de tu área.");
+      return;
+    }
     const rowAreaId = String(row.area_id ?? "");
     const areaCode =
       Object.entries(areaIdByCode).find(([, id]) => id === rowAreaId)?.[0] ??
@@ -988,17 +1207,18 @@ export function ReportesScreen({
   }
 
   async function handleSaveReport(): Promise<void> {
-    if (user.role !== "admin" || !editingRow) return;
+    if (!editingRow || !canEditReport(editingRow)) return;
 
     const recordId = getRowString(editingRow, "id");
     const qty = Number(editForm.cantidadDanada);
-    const areaId = areaIdByCode[editForm.area];
+    const areaId =
+      user.role === "admin" ? areaIdByCode[editForm.area] : userAreaId;
     if (!recordId) {
-      setError("No se encontro el ID del reporte.");
+      setError("No se encontró el ID del reporte.");
       return;
     }
     if (!areaId) {
-      setError("Selecciona un area valida.");
+      setError("Selecciona un área válida.");
       return;
     }
     if (
@@ -1007,7 +1227,7 @@ export function ReportesScreen({
       !Number.isFinite(qty) ||
       qty <= 0
     ) {
-      setError("Completa pedido, motivo y una cantidad valida.");
+      setError("Completa pedido, motivo y una cantidad válida.");
       return;
     }
 
@@ -1060,12 +1280,12 @@ export function ReportesScreen({
     if (user.role !== "admin") return;
     const recordId = getRowString(row, "id");
     if (!recordId) {
-      setError("No se encontro el ID del reporte.");
+      setError("No se encontró el ID del reporte.");
       return;
     }
     const label = getRowString(row, "nombre_pedido") ?? "este reporte";
     const confirmed = window.confirm(
-      `Eliminar "${label}"? Esta accion no se puede deshacer.`,
+      `Eliminar "${label}"? Esta acción no se puede deshacer.`,
     );
     if (!confirmed) return;
 
@@ -1131,7 +1351,7 @@ export function ReportesScreen({
     const label =
       `${formatAreaLabel(String(row.area ?? ""))} ${String(row.fecha_inicio ?? "")} - ${String(row.fecha_fin ?? "")}`.trim();
     const confirmed = window.confirm(
-      `Eliminar cierre "${label}"? Esta accion no se puede deshacer.`,
+      `Eliminar cierre "${label}"? Esta acción no se puede deshacer.`,
     );
     if (!confirmed) return;
 
@@ -1214,7 +1434,7 @@ export function ReportesScreen({
     });
     const areaLabel =
       areaCode === "all"
-        ? "Todas las areas"
+        ? "Todas las áreas"
         : (areaOptions.find((option) => option.code === areaCode)?.label ??
           formatAreaLabel(areaCode));
 
@@ -1231,23 +1451,7 @@ export function ReportesScreen({
     setDownloadingClosureId(null);
   }
 
-  async function handleDownloadClosureGroup(group: ClosureGroup): Promise<void> {
-    const groupKey = `group-${group.date}`;
-    const dates = group.rows.flatMap((row) => [
-      String(row.fecha_inicio ?? "").slice(0, 10),
-      String(row.fecha_fin ?? "").slice(0, 10),
-    ]).filter(Boolean);
-    const from = dates.sort((a, b) => a.localeCompare(b))[0];
-    const to = dates.sort((a, b) => b.localeCompare(a))[0];
-
-    if (!from || !to) {
-      setError("Este grupo no tiene rango de fechas para descargar.");
-      return;
-    }
-
-    setDownloadingClosureId(groupKey);
-    setError(null);
-
+  async function fetchClosureReportRows(): Promise<AnyRow[] | null> {
     const { data, error: qErr } = await supabase
       .from("pedidos_danados")
       .select(
@@ -1258,18 +1462,24 @@ export function ReportesScreen({
 
     if (qErr) {
       setError(qErr.message);
-      setDownloadingClosureId(null);
-      return;
+      return null;
     }
 
-    const allRows = ((data ?? []) as unknown as AnyRow[]).filter((item) => {
-      const raw = item.fecha ?? item.fecha_registro;
-      if (!raw) return true;
-      const normalized = String(raw).slice(0, 10);
-      return normalized >= from && normalized <= to;
-    });
+    return (data ?? []) as unknown as AnyRow[];
+  }
 
-    const XLSX = await loadXlsx();
+  function createClosureWorkbook(
+    XLSX: XlsxModule,
+    group: ClosureGroup,
+    sourceRows: AnyRow[],
+  ): AnyRow {
+    const range = getClosureDateRange(group);
+    if (!range) {
+      throw new Error("Este grupo no tiene rango de fechas para descargar.");
+    }
+
+    const { from, to } = range;
+    const allRows = filterRowsByDateRange(sourceRows, from, to);
     const workbook = XLSX.utils.book_new();
     const summaryRows = group.rows.map((row) => [
       String(row.created_at ?? "").slice(0, 10),
@@ -1280,9 +1490,9 @@ export function ReportesScreen({
     ]);
     const summarySheet = XLSX.utils.aoa_to_sheet([
       ["Historial de Cierres - ESMARK Control"],
-      [`Fecha de cierre: ${group.date} | Areas: ${group.rows.length}`],
+      [`Fecha de cierre: ${group.date} | Áreas: ${group.rows.length}`],
       [],
-      ["Fecha de cierre", "Area", "Desde", "Hasta", "Generado por"],
+      ["Fecha de cierre", "Área", "Desde", "Hasta", "Generado por"],
       ...summaryRows,
     ]);
     summarySheet["!cols"] = [
@@ -1307,8 +1517,8 @@ export function ReportesScreen({
         XLSX,
         areaRows,
         areaNameById,
-        "Reporte de Pedidos Danados - ESMARK Control",
-        `Area: ${areaLabel} | Rango: ${from} a ${to} | Registros: ${areaRows.length}`,
+        "Reporte de Pedidos Dañados - ESMARK Control",
+        `Área: ${areaLabel} | Rango: ${from} a ${to} | Registros: ${areaRows.length}`,
       );
       XLSX.utils.book_append_sheet(
         workbook,
@@ -1317,10 +1527,92 @@ export function ReportesScreen({
       );
     }
 
+    return workbook;
+  }
+
+  async function handleDownloadClosureGroup(group: ClosureGroup): Promise<void> {
+    const groupKey = `group-${group.date}`;
+    const range = getClosureDateRange(group);
+
+    if (!range) {
+      setError("Este grupo no tiene rango de fechas para descargar.");
+      return;
+    }
+
+    setDownloadingClosureId(groupKey);
+    setError(null);
+
+    const sourceRows = await fetchClosureReportRows();
+    if (!sourceRows) {
+      setDownloadingClosureId(null);
+      return;
+    }
+
+    const XLSX = await loadXlsx();
+    const workbook = createClosureWorkbook(XLSX, group, sourceRows);
+
     downloadWorkbook(XLSX, workbook, `cierres_${group.date}.xlsx`);
     setSuccess("Excel de cierres descargado.");
     window.setTimeout(() => setSuccess(null), 3000);
     setDownloadingClosureId(null);
+  }
+
+  async function handleDownloadMonthlyBackups(): Promise<void> {
+    if (user.role !== "admin") {
+      setError("Solo administración puede descargar respaldos completos.");
+      return;
+    }
+    if (closureGroups.length === 0) {
+      setError("No hay cierres para respaldar.");
+      return;
+    }
+
+    setDownloadingMonthlyBackup(true);
+    setError(null);
+    setSuccess(null);
+
+    const sourceRows = await fetchClosureReportRows();
+    if (!sourceRows) {
+      setDownloadingMonthlyBackup(false);
+      return;
+    }
+
+    try {
+      const XLSX = await loadXlsx();
+      const months = Array.from(closureBackupMonths.entries()).sort(([a], [b]) =>
+        b.localeCompare(a),
+      );
+
+      for (const [month, groups] of months) {
+        const files: ZipFileEntry[] = groups.map((group) => {
+          const workbook = createClosureWorkbook(XLSX, group, sourceRows);
+          return {
+            name: `cierre_${group.date}.xlsx`,
+            data: writeWorkbookBytes(XLSX, workbook),
+          };
+        });
+        const zip = createZipBlob(files);
+        downloadBlob(zip, `respaldo_cierres_${month}.zip`);
+      }
+
+      window.localStorage.setItem(
+        CLOSURE_BACKUP_REMINDER_KEY,
+        new Date().toISOString(),
+      );
+      setBackupReminderDue(false);
+      setSuccess(
+        `Cierres guardados en Supabase y respaldo local descargado por mes (${months.length} archivo${months.length === 1 ? "" : "s"} ZIP).`,
+      );
+      window.setTimeout(() => setSuccess(null), 5000);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo generar el respaldo local.",
+      );
+    } finally {
+      setDownloadingMonthlyBackup(false);
+    }
   }
 
   if (historyOnly) {
@@ -1367,7 +1659,41 @@ export function ReportesScreen({
         {historyTab === "cierres" && (
           <>
             <div style={styles.card}>
-              <h3 style={styles.h3}>Cierres registrados</h3>
+              <div style={styles.cardHeader}>
+                <div>
+                  <h3 style={styles.h3}>Cierres registrados</h3>
+                  <p style={styles.cardSubtext}>
+                    Los cierres quedan guardados en Supabase. Además, puedes
+                    descargar una copia local por mes para respaldo
+                    administrativo.
+                  </p>
+                </div>
+                {user.role === "admin" && (
+                  <button
+                    type="button"
+                    style={styles.secondaryBtn}
+                    onClick={() => void handleDownloadMonthlyBackups()}
+                    disabled={
+                      downloadingMonthlyBackup ||
+                      loadingClosures ||
+                      closureGroups.length === 0
+                    }
+                  >
+                    {downloadingMonthlyBackup
+                      ? "Preparando ZIP..."
+                      : "Descargar respaldo por mes"}
+                  </button>
+                )}
+              </div>
+              {backupReminderDue && user.role === "admin" && (
+                <div style={styles.backupReminder}>
+                  <strong>Recordatorio de respaldo local</strong>
+                  <span>
+                    Los cierres siguen en Supabase. Ya corresponde descargar
+                    una copia local por mes para respaldo administrativo.
+                  </span>
+                </div>
+              )}
               {loadingClosures ? (
                 <p>Cargando cierres...</p>
               ) : (
@@ -1650,7 +1976,7 @@ export function ReportesScreen({
                 <div>
                   <h3 style={styles.modalTitle}>Detalle del reporte</h3>
                   <p style={styles.modalSubtitle}>
-                    Informacion historica registrada para este reporte.
+                    Información histórica registrada para este reporte.
                   </p>
                 </div>
                 <button
@@ -1696,7 +2022,7 @@ export function ReportesScreen({
                     <div style={styles.trelloInfoBox}>
                       <div style={styles.trelloInfoHeader}>
                         <div style={styles.trelloInfoTitle}>
-                          Informacion vinculada al reporte
+                          Información vinculada al reporte
                         </div>
                         <span
                           style={{
@@ -1746,9 +2072,9 @@ export function ReportesScreen({
                           </div>
                         </div>
                         <div style={styles.trelloInfoItemWide}>
-                          <div style={styles.trelloInfoKey}>Descripcion</div>
+                          <div style={styles.trelloInfoKey}>Descripción</div>
                           <div style={styles.trelloInfoDescription}>
-                            {trelloDescription ?? "Sin descripcion en Trello."}
+                            {trelloDescription ?? "Sin descripción en Trello."}
                           </div>
                         </div>
                       </div>
@@ -1896,7 +2222,7 @@ export function ReportesScreen({
                 <th style={styles.th}>Pedido</th>
                 <th style={styles.th}>Cantidad</th>
                 <th style={styles.th}>Motivo</th>
-                {user.role === "admin" && <th style={styles.th}>Acciones</th>}
+                <th style={styles.th}>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -1917,9 +2243,9 @@ export function ReportesScreen({
                   <td style={styles.td}>{String(r.nombre_pedido ?? "-")}</td>
                   <td style={styles.td}>{String(r.cantidad_danada ?? "-")}</td>
                   <td style={styles.td}>{String(r.motivo_dano ?? "-")}</td>
-                  {user.role === "admin" && (
-                    <td style={styles.td} onClick={(e) => e.stopPropagation()}>
-                      <div style={styles.rowActions}>
+                  <td style={styles.td} onClick={(e) => e.stopPropagation()}>
+                    <div style={styles.rowActions}>
+                      {canEditReport(r) && (
                         <button
                           type="button"
                           style={styles.inlineBtn}
@@ -1928,6 +2254,8 @@ export function ReportesScreen({
                         >
                           Editar
                         </button>
+                      )}
+                      {user.role === "admin" && (
                         <button
                           type="button"
                           style={styles.inlineDangerBtn}
@@ -1936,14 +2264,14 @@ export function ReportesScreen({
                         >
                           Eliminar
                         </button>
-                      </div>
-                    </td>
-                  )}
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td style={styles.td} colSpan={user.role === "admin" ? 6 : 5}>
+                  <td style={styles.td} colSpan={6}>
                     Sin registros para el filtro actual.
                   </td>
                 </tr>
@@ -2050,16 +2378,18 @@ export function ReportesScreen({
                 </p>
               </div>
               <div style={styles.modalActions}>
+                {canEditReport(selectedRow) && (
+                  <button
+                    type="button"
+                    style={styles.secondaryBtn}
+                    onClick={() => startEditReport(selectedRow)}
+                    disabled={mutatingReport}
+                  >
+                    Editar
+                  </button>
+                )}
                 {user.role === "admin" && (
                   <>
-                    <button
-                      type="button"
-                      style={styles.secondaryBtn}
-                      onClick={() => startEditReport(selectedRow)}
-                      disabled={mutatingReport}
-                    >
-                      Editar
-                    </button>
                     <button
                       type="button"
                       style={styles.dangerBtn}
@@ -2241,10 +2571,11 @@ export function ReportesScreen({
                       />
                     </label>
                     <label style={styles.editField}>
-                      <span style={styles.modalKey}>Area</span>
+                      <span style={styles.modalKey}>Área</span>
                       <select
                         style={styles.input}
                         value={editForm.area}
+                        disabled={user.role !== "admin"}
                         onChange={(e) =>
                           setEditForm((current) => ({
                             ...current,
@@ -2314,7 +2645,7 @@ export function ReportesScreen({
                       />
                     </label>
                     <label style={styles.editField}>
-                      <span style={styles.modalKey}>Tipo dano</span>
+                      <span style={styles.modalKey}>Tipo daño</span>
                       <input
                         style={styles.input}
                         value={editForm.tipoDano}
@@ -2344,7 +2675,7 @@ export function ReportesScreen({
                     <label
                       style={{ ...styles.editField, gridColumn: "1 / -1" }}
                     >
-                      <span style={styles.modalKey}>Observacion</span>
+                      <span style={styles.modalKey}>Observación</span>
                       <textarea
                         style={styles.textarea}
                         value={editForm.observacion}
@@ -2528,6 +2859,19 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 12,
   },
   cardSubtext: { margin: "4px 0 0", color: "#64748b", fontSize: 13 },
+  backupReminder: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    marginBottom: 14,
+    padding: "12px 14px",
+    border: "1px solid #fde68a",
+    borderRadius: 8,
+    background: "#fffbeb",
+    color: "#92400e",
+    fontSize: 13,
+    lineHeight: 1.45,
+  },
   historyTabs: {
     display: "flex",
     flexWrap: "wrap",

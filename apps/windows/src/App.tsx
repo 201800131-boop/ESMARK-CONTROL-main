@@ -6,13 +6,88 @@ import { Dashboard } from './screens/Dashboard';
 
 type AppState = 'loading' | 'login' | 'dashboard';
 
-const UPDATE_NOTICE_VERSION = 'manual-closures-v1';
+const UPDATE_NOTICE_VERSION = 'dashboard-reportes-v1-0-36';
 const UPDATE_NOTICE_KEY = `esmark-update-notice-${UPDATE_NOTICE_VERSION}`;
+const SUPABASE_SPACE_NOTICE_KEY = 'esmark.supabaseSpace.last90Notice';
+const SUPABASE_SPACE_CHECK_MS = 30 * 60 * 1000;
+const SUPABASE_SPACE_NOTICE_MS = 24 * 60 * 60 * 1000;
+
+type ClosureNotice = {
+  id: string;
+  title: string;
+  text: string;
+};
+
+type ClosureNotificationRow = {
+  area?: string | null;
+  fecha_inicio?: string | null;
+  fecha_fin?: string | null;
+  created_at?: string | null;
+};
+
+type SupabaseSpaceUsage = {
+  success?: boolean;
+  error?: string;
+  database_mb?: number;
+  limit_mb?: number;
+  percent_used?: number;
+  warning?: boolean;
+};
+
+function normalizeAreaCode(area?: string | null): string {
+  return String(area ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return '';
+  const [datePart] = String(value).split('T');
+  return datePart;
+}
+
+function formatClosureNotice(row: ClosureNotificationRow, isAdmin: boolean): ClosureNotice {
+  const from = formatDate(row.fecha_inicio);
+  const to = formatDate(row.fecha_fin);
+  const range = from && to ? `${from} al ${to}` : 'rango registrado';
+  const area = normalizeAreaCode(row.area);
+  const areaLabel = area ? area.replace(/_/g, ' ') : '';
+  const areaText = isAdmin && areaLabel ? ` (${areaLabel})` : '';
+
+  return {
+    id: `${row.created_at ?? Date.now()}-${row.fecha_inicio ?? ''}-${row.fecha_fin ?? ''}-${area}`,
+    title: 'Cierre de mes realizado',
+    text: `Se generó el cierre${areaText}: ${range}.`,
+  };
+}
+
+function sendBrowserNotification(title: string, body: string): void {
+  if (!('Notification' in window) || window.Notification.permission !== 'granted') return;
+  try {
+    new window.Notification(title, { body });
+  } catch {
+    // La notificación visual dentro de la app sigue activa aunque el sistema la rechace.
+  }
+}
+
+function shouldNotifySupabaseSpace(): boolean {
+  const raw = window.localStorage.getItem(SUPABASE_SPACE_NOTICE_KEY);
+  if (!raw) return true;
+  const last = new Date(raw);
+  if (Number.isNaN(last.getTime())) return true;
+  return Date.now() - last.getTime() >= SUPABASE_SPACE_NOTICE_MS;
+}
 
 export function App(): React.JSX.Element {
   const [state, setState] = React.useState<AppState>('loading');
   const [user, setUser] = React.useState<AuthUser | null>(null);
   const [showUpdateNotice, setShowUpdateNotice] = React.useState(false);
+  const [closureNotice, setClosureNotice] = React.useState<ClosureNotice | null>(null);
+  const [spaceNotice, setSpaceNotice] = React.useState<ClosureNotice | null>(null);
+  const lastClosureNoticeKey = React.useRef<string | null>(null);
 
   const refreshUser = React.useCallback(async () => {
     try {
@@ -56,6 +131,80 @@ export function App(): React.JSX.Element {
     setShowUpdateNotice(alreadySeen !== 'seen');
   }, [state]);
 
+  React.useEffect(() => {
+    if (state !== 'dashboard' || !user) return;
+
+    const userArea = normalizeAreaCode(user.area);
+    const isAdmin = user.role === 'admin';
+    const channel = supabase
+      .channel(`closure-notifications-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'reportes_generados',
+          ...(isAdmin || !userArea ? {} : { filter: `area=eq.${userArea}` }),
+        },
+        (payload) => {
+          const row = (payload.new ?? {}) as ClosureNotificationRow;
+          const notice = formatClosureNotice(row, isAdmin);
+          const groupedKey = `${row.fecha_inicio ?? ''}-${row.fecha_fin ?? ''}`;
+
+          if (isAdmin && lastClosureNoticeKey.current === groupedKey) return;
+          lastClosureNoticeKey.current = groupedKey;
+
+          setClosureNotice(notice);
+          sendBrowserNotification(notice.title, notice.text);
+          window.setTimeout(() => {
+            setClosureNotice((current) => (current?.id === notice.id ? null : current));
+          }, 8000);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [state, user]);
+
+  React.useEffect(() => {
+    if (state !== 'dashboard' || !user || user.role !== 'admin') return;
+
+    let active = true;
+
+    async function checkSupabaseSpace(): Promise<void> {
+      const { data, error } = await supabase.rpc('obtener_uso_espacio_supabase');
+      if (!active || error) return;
+
+      const usage = data as SupabaseSpaceUsage | null;
+      if (!usage?.success || !usage.warning || !shouldNotifySupabaseSpace()) return;
+
+      const percent = Number(usage.percent_used ?? 0).toFixed(2);
+      const used = Number(usage.database_mb ?? 0).toFixed(2);
+      const limit = Number(usage.limit_mb ?? 0).toFixed(0);
+      const notice = {
+        id: `supabase-space-${Date.now()}`,
+        title: 'Supabase cerca del límite',
+        text: `La base está usando ${percent}% del espacio configurado (${used} MB de ${limit} MB). Haz respaldo y revisa el plan.`,
+      };
+
+      window.localStorage.setItem(SUPABASE_SPACE_NOTICE_KEY, new Date().toISOString());
+      setSpaceNotice(notice);
+      sendBrowserNotification(notice.title, notice.text);
+    }
+
+    void checkSupabaseSpace();
+    const intervalId = window.setInterval(() => {
+      void checkSupabaseSpace();
+    }, SUPABASE_SPACE_CHECK_MS);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [state, user]);
+
   function closeUpdateNotice(): void {
     window.localStorage.setItem(UPDATE_NOTICE_KEY, 'seen');
     setShowUpdateNotice(false);
@@ -97,7 +246,33 @@ export function App(): React.JSX.Element {
         }}
       />
       {showUpdateNotice && <UpdateNotice onClose={closeUpdateNotice} />}
+      {closureNotice && (
+        <ClosureToast notice={closureNotice} onClose={() => setClosureNotice(null)} />
+      )}
+      {spaceNotice && (
+        <ClosureToast notice={spaceNotice} onClose={() => setSpaceNotice(null)} />
+      )}
     </>
+  );
+}
+
+function ClosureToast({
+  notice,
+  onClose,
+}: {
+  notice: ClosureNotice;
+  onClose: () => void;
+}): React.JSX.Element {
+  return (
+    <aside style={closureToastStyles.panel} role="status" aria-live="polite">
+      <div>
+        <strong style={closureToastStyles.title}>{notice.title}</strong>
+        <p style={closureToastStyles.text}>{notice.text}</p>
+      </div>
+      <button type="button" style={closureToastStyles.closeButton} onClick={onClose}>
+        Cerrar
+      </button>
+    </aside>
   );
 }
 
@@ -107,25 +282,25 @@ function UpdateNotice({ onClose }: { onClose: () => void }): React.JSX.Element {
       <section style={noticeStyles.panel}>
         <div style={noticeStyles.header}>
           <span style={noticeStyles.kicker}>Actualizacion disponible</span>
-          <h1 style={noticeStyles.title}>Nuevas mejoras en Reportes</h1>
+          <h1 style={noticeStyles.title}>Nuevas mejoras de control</h1>
           <p style={noticeStyles.text}>
-            Los cierres ahora quedan bajo control manual para que administracion
-            decida cuando generar y guardar cada cierre.
+            Esta version mejora el panel de control, el registro de danos y la
+            revision de reportes desde administracion y areas.
           </p>
         </div>
 
         <div style={noticeStyles.grid}>
           <NoticeItem
-            title="Cierres manuales"
-            text="Ya no se generan cierres automaticos. La tabla permanecera vacia hasta usar Empezar Cierre."
+            title="Panel con detalle"
+            text="Las tarjetas del panel ahora se pueden abrir para revisar pedidos, reportes, areas y unidades danadas."
           />
           <NoticeItem
-            title="Excel sin guardar cierre"
-            text="Generar Excel ahora solo descarga el archivo y no crea registros nuevos en el historial."
+            title="Registro de danos"
+            text="Se agrego cantidad danada, tipo de dano, responsable por categoria y mejor guardado de observaciones."
           />
           <NoticeItem
-            title="Acciones de cierre"
-            text="Cuando exista un cierre manual, podras descargar su Excel o eliminarlo desde Acciones."
+            title="Cierres y respaldos"
+            text="Incluye notificaciones de cierre, alerta de espacio de Supabase y descarga de respaldos mensuales en ZIP."
           />
         </div>
 
@@ -252,6 +427,49 @@ const noticeStyles: Record<string, React.CSSProperties> = {
     background: '#1d4ed8',
     color: '#ffffff',
     fontSize: 14,
+    fontWeight: 800,
+    cursor: 'pointer',
+  },
+};
+
+const closureToastStyles: Record<string, React.CSSProperties> = {
+  panel: {
+    position: 'fixed',
+    right: 20,
+    bottom: 20,
+    zIndex: 1100,
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 14,
+    width: 'min(420px, calc(100vw - 32px))',
+    padding: '16px 16px 14px',
+    border: '1px solid #bfdbfe',
+    borderLeft: '5px solid #1d4ed8',
+    borderRadius: 8,
+    background: '#ffffff',
+    boxShadow: '0 18px 50px rgba(15, 23, 42, 0.22)',
+  },
+  title: {
+    display: 'block',
+    marginBottom: 5,
+    color: '#0f172a',
+    fontSize: 14,
+    lineHeight: 1.3,
+  },
+  text: {
+    margin: 0,
+    color: '#475569',
+    fontSize: 13,
+    lineHeight: 1.45,
+  },
+  closeButton: {
+    flex: '0 0 auto',
+    padding: '7px 10px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 8,
+    background: '#f8fafc',
+    color: '#334155',
+    fontSize: 12,
     fontWeight: 800,
     cursor: 'pointer',
   },
