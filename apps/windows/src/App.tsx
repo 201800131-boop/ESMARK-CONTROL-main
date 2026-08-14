@@ -1,16 +1,20 @@
 import React from 'react';
 import { getCurrentUser, type AuthUser } from './services/auth';
+import { cleanupBackedUpRecords, createAdminBackup } from './services/admin-backup';
 import { supabase } from './core/supabase';
 import { LoginScreen } from './screens/LoginScreen';
 import { Dashboard } from './screens/Dashboard';
 
 type AppState = 'loading' | 'login' | 'dashboard';
 
-const UPDATE_NOTICE_VERSION = 'dashboard-reportes-v1-0-39';
+const UPDATE_NOTICE_VERSION = 'cloud-supabase-v1-0-42';
 const UPDATE_NOTICE_KEY = `esmark-update-notice-${UPDATE_NOTICE_VERSION}`;
 const SUPABASE_SPACE_NOTICE_KEY = 'esmark.supabaseSpace.last90Notice';
 const SUPABASE_SPACE_CHECK_MS = 30 * 60 * 1000;
 const SUPABASE_SPACE_NOTICE_MS = 24 * 60 * 60 * 1000;
+const MANDATORY_BACKUP_KEY = 'esmark.adminBackup.lastMandatoryDownload.v1';
+const MANDATORY_BACKUP_INTERVAL_MS = 15 * 24 * 60 * 60 * 1000;
+const MANDATORY_BACKUP_CHECK_MS = 15 * 60 * 1000;
 
 type ClosureNotice = {
   id: string;
@@ -81,13 +85,25 @@ function shouldNotifySupabaseSpace(): boolean {
   return Date.now() - last.getTime() >= SUPABASE_SPACE_NOTICE_MS;
 }
 
+function isMandatoryBackupDue(): boolean {
+  const raw = window.localStorage.getItem(MANDATORY_BACKUP_KEY);
+  if (!raw) return true;
+  const lastDownload = new Date(raw);
+  if (Number.isNaN(lastDownload.getTime())) return true;
+  const elapsed = Date.now() - lastDownload.getTime();
+  return elapsed < 0 || elapsed >= MANDATORY_BACKUP_INTERVAL_MS;
+}
+
 export function App(): React.JSX.Element {
   const [state, setState] = React.useState<AppState>('loading');
   const [user, setUser] = React.useState<AuthUser | null>(null);
   const [showUpdateNotice, setShowUpdateNotice] = React.useState(false);
   const [closureNotice, setClosureNotice] = React.useState<ClosureNotice | null>(null);
   const [spaceNotice, setSpaceNotice] = React.useState<ClosureNotice | null>(null);
+  const [backupNotice, setBackupNotice] = React.useState<ClosureNotice | null>(null);
   const lastClosureNoticeKey = React.useRef<string | null>(null);
+  const backedUpAdminRef = React.useRef<string | null>(null);
+  const adminBackupInFlightRef = React.useRef(false);
 
   const refreshUser = React.useCallback(async () => {
     try {
@@ -205,6 +221,72 @@ export function App(): React.JSX.Element {
     };
   }, [state, user]);
 
+  React.useEffect(() => {
+    if (state !== 'dashboard' || !user || user.role !== 'admin') return;
+    const adminUser = user;
+    let active = true;
+
+    async function runAdminBackup(alwaysStore: boolean): Promise<void> {
+      const downloadToDevice = isMandatoryBackupDue();
+      if ((!alwaysStore && !downloadToDevice) || adminBackupInFlightRef.current) return;
+
+      adminBackupInFlightRef.current = true;
+      try {
+        const result = await createAdminBackup(adminUser, {
+          downloadToDevice,
+          reason: downloadToDevice ? 'mandatory-15-days' : 'admin-login',
+        });
+        if (!active) return;
+
+        let cleanupText = '';
+        if (result.downloadedToDevice) {
+          const cleanupResult = await cleanupBackedUpRecords(adminUser);
+          if (!active) return;
+          window.localStorage.setItem(MANDATORY_BACKUP_KEY, new Date().toISOString());
+          cleanupText = ` Limpieza segura: ${cleanupResult.total_deleted ?? 0} registros anteriores a ${cleanupResult.cutoff_date ?? 'la fecha limite'}.`;
+        }
+        const notice = result.downloadedToDevice
+          ? {
+              id: `admin-backup-download-${Date.now()}`,
+              title: 'Respaldo obligatorio descargado',
+              text: `Se descargaron ${result.totalRecords} registros y cierres en ${result.fileName}.${cleanupText}`,
+            }
+          : {
+              id: `admin-backup-${Date.now()}`,
+              title: 'Respaldo guardado en Supabase',
+              text: `Se protegieron ${result.totalRecords} registros en ${result.objectPath}.`,
+            };
+        setBackupNotice(notice);
+        sendBrowserNotification(notice.title, notice.text);
+      } catch (error: unknown) {
+        if (!active) return;
+        const message = error instanceof Error ? error.message : 'Error desconocido.';
+        const notice = {
+          id: `admin-backup-error-${Date.now()}`,
+          title: 'No se pudo completar el respaldo',
+          text: `${message} Se volverá a intentar automáticamente.`,
+        };
+        setBackupNotice(notice);
+        sendBrowserNotification(notice.title, notice.text);
+      } finally {
+        adminBackupInFlightRef.current = false;
+      }
+    }
+
+    if (backedUpAdminRef.current !== user.id) {
+      backedUpAdminRef.current = user.id;
+      void runAdminBackup(true);
+    }
+    const intervalId = window.setInterval(() => {
+      void runAdminBackup(false);
+    }, MANDATORY_BACKUP_CHECK_MS);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [state, user?.id, user?.role]);
+
   function closeUpdateNotice(): void {
     window.localStorage.setItem(UPDATE_NOTICE_KEY, 'seen');
     setShowUpdateNotice(false);
@@ -241,6 +323,8 @@ export function App(): React.JSX.Element {
       <Dashboard
         user={user!}
         onSignOut={() => {
+          backedUpAdminRef.current = null;
+          adminBackupInFlightRef.current = false;
           setUser(null);
           setState('login');
         }}
@@ -251,6 +335,9 @@ export function App(): React.JSX.Element {
       )}
       {spaceNotice && (
         <ClosureToast notice={spaceNotice} onClose={() => setSpaceNotice(null)} />
+      )}
+      {backupNotice && (
+        <ClosureToast notice={backupNotice} onClose={() => setBackupNotice(null)} />
       )}
     </>
   );
@@ -282,10 +369,10 @@ function UpdateNotice({ onClose }: { onClose: () => void }): React.JSX.Element {
       <section style={noticeStyles.panel}>
         <div style={noticeStyles.header}>
           <span style={noticeStyles.kicker}>Actualización disponible</span>
-          <h1 style={noticeStyles.title}>Nuevas mejoras de control</h1>
+          <h1 style={noticeStyles.title}>Respaldo obligatorio cada 15 días</h1>
           <p style={noticeStyles.text}>
-            Esta versión mejora el panel de control, el registro de daños y la
-            revisión de reportes desde administración y áreas.
+            Al iniciar como administrador, Supabase guarda una copia completa. Cada
+            15 días también se descarga automáticamente al equipo administrativo.
           </p>
         </div>
 
@@ -299,8 +386,8 @@ function UpdateNotice({ onClose }: { onClose: () => void }): React.JSX.Element {
             text="Se agregó cantidad dañada, tipo de daño, responsable por categoría y mejor guardado de observaciones."
           />
           <NoticeItem
-            title="Cierres y respaldos"
-            text="Incluye notificaciones de cierre, alerta de espacio de Supabase y descarga de respaldos mensuales en ZIP."
+            title="Copia quincenal"
+            text="La descarga incluye todos los registros y cierres, con conteos y verificación SHA-256. Si falla, se vuelve a intentar."
           />
         </div>
 

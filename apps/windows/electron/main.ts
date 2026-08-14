@@ -4,6 +4,21 @@ import fs from "fs";
 import { autoUpdater } from "electron-updater";
 
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
+const SUPABASE_URL = process.env["SUPABASE_URL"] ?? "";
+
+function usesLocalSupabase(urlValue: string): boolean {
+  try {
+    const hostname = new URL(urlValue).hostname.toLowerCase();
+    return (
+      hostname === "localhost" ||
+      hostname === "::1" ||
+      hostname.endsWith(".local") ||
+      /^(?:127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/.test(hostname)
+    );
+  } catch {
+    return false;
+  }
+}
 
 function getAppIconPath(): string {
   if (app.isPackaged) {
@@ -326,6 +341,10 @@ function createUpdateReadyWindow(parent: BrowserWindow, version: string): Browse
 
 function setupAutoUpdates(win: BrowserWindow): void {
   if (!app.isPackaged) return;
+  if (usesLocalSupabase(SUPABASE_URL)) {
+    console.log("Actualizaciones automaticas desactivadas para el servidor local.");
+    return;
+  }
 
   let updateOverlayWindow: BrowserWindow | null = null;
   let updateReadyWindow: BrowserWindow | null = null;

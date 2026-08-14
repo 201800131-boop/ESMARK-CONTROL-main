@@ -61,6 +61,79 @@ function toSupabaseSecret(secret: string): string {
   return `PIN-${trimmed}-ESM`;
 }
 
+function toSignInErrorMessage(error: { message?: string }): string {
+  const message = String(error.message ?? "");
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("quota") ||
+    normalized.includes("restricted") ||
+    normalized.includes("spend cap") ||
+    normalized.includes("egress") ||
+    normalized.includes("edge_functions")
+  ) {
+    return (
+      "Supabase restringio el proyecto por limite de uso. " +
+      "Revisa la facturacion, el plan o el spend cap antes de volver a iniciar sesion."
+    );
+  }
+
+  if (
+    normalized.includes("network") ||
+    normalized.includes("fetch") ||
+    normalized.includes("failed to fetch")
+  ) {
+    return "No se pudo conectar con Supabase. Revisa internet e intenta de nuevo.";
+  }
+
+  return "Usuario o contrasena incorrectos";
+}
+
+function getStringMetadata(
+  metadata: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function usernameFromEmail(email?: string | null): string | undefined {
+  if (!email) return undefined;
+  const [localPart] = email.split("@");
+  return localPart?.trim() || undefined;
+}
+
+function resolveAuthUser(
+  user: SupabaseAuthUserLike,
+  fallbackUsername?: string,
+): AuthUser | null {
+  const userMeta = user.user_metadata ?? {};
+  const appMeta = user.app_metadata ?? {};
+  const username =
+    getStringMetadata(userMeta, "username") ??
+    fallbackUsername?.trim() ??
+    usernameFromEmail(user.email);
+
+  if (!username) return null;
+
+  const role =
+    getStringMetadata(appMeta, "role") ?? getStringMetadata(userMeta, "role");
+  const area =
+    getStringMetadata(appMeta, "area") ?? getStringMetadata(userMeta, "area");
+  const fullName =
+    getStringMetadata(userMeta, "full_name") ??
+    getStringMetadata(userMeta, "name") ??
+    username;
+
+  return {
+    id: user.id,
+    username,
+    fullName,
+    role: role === "admin" ? "admin" : "area",
+    area: parseArea(area),
+  };
+}
+
 export interface AuthUser {
   id: string;
   username: string;
@@ -68,6 +141,13 @@ export interface AuthUser {
   role: "admin" | "area";
   area?: UserArea;
 }
+
+type SupabaseAuthUserLike = {
+  id: string;
+  email?: string | null;
+  user_metadata?: Record<string, unknown>;
+  app_metadata?: Record<string, unknown>;
+};
 
 export function canViewArea(user: AuthUser, targetArea: string): boolean {
   if (user.role === "admin") return true;
@@ -96,21 +176,23 @@ export async function signIn(
     email,
     password: toSupabaseSecret(password),
   });
-  if (error) throw new Error("Usuario o contrasena incorrectos");
+  if (error) throw new Error(toSignInErrorMessage(error));
   if (!data.user) throw new Error("No se recibio usuario");
-  const meta = data.user.user_metadata as {
+  const userMeta = data.user.user_metadata as {
     username?: string;
     full_name?: string;
     role?: string;
     area?: string;
+    activo?: boolean;
   };
-  return {
-    id: data.user.id,
-    username: meta.username ?? username,
-    fullName: meta.full_name ?? meta.username ?? username,
-    role: meta.role === "admin" ? "admin" : "area",
-    area: parseArea(meta.area),
-  };
+  const appMeta = data.user.app_metadata as { activo?: boolean };
+  if (appMeta.activo === false || userMeta.activo === false) {
+    await supabase.auth.signOut();
+    throw new Error("Este usuario esta inactivo. Pide a administracion que lo active.");
+  }
+  const authUser = resolveAuthUser(data.user, username);
+  if (!authUser) throw new Error("No se pudo leer el perfil del usuario.");
+  return authUser;
 }
 
 export async function signOut(): Promise<void> {
@@ -128,20 +210,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return null;
-  const meta = user.user_metadata as {
-    username?: string;
-    full_name?: string;
-    role?: string;
-    area?: string;
-  };
-  if (!meta.username) return null;
-  return {
-    id: user.id,
-    username: meta.username,
-    fullName: meta.full_name ?? meta.username,
-    role: meta.role === "admin" ? "admin" : "area",
-    area: parseArea(meta.area),
-  };
+  return resolveAuthUser(user);
 }
 
 export interface ManagedUser {

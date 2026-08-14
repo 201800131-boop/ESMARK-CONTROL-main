@@ -94,15 +94,6 @@ function formatAreaLabel(area?: string): string {
   return String(area ?? "-");
 }
 
-function getLatestClosureCreatedAt(rows: AnyRow[]): string | null {
-  return (
-    rows
-      .map((row) => String(row.created_at ?? ""))
-      .filter(Boolean)
-      .sort((a, b) => b.localeCompare(a))[0] ?? null
-  );
-}
-
 const REPORT_HEADERS = [
   "Fecha",
   "Área",
@@ -546,6 +537,13 @@ function formatDateShort(value: unknown): string {
   });
 }
 
+function toDateInputValue(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function ReportesScreen({
   user,
   historyOnly = false,
@@ -602,16 +600,15 @@ export function ReportesScreen({
   const [historyReportsLoaded, setHistoryReportsLoaded] =
     React.useState(false);
   const backupReminderNotifiedRef = React.useRef(false);
+  const loadRowsRequestRef = React.useRef(0);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const monthStart = `${today.slice(0, 8)}01`;
-  const [fechaInicio, setFechaInicio] = React.useState(monthStart);
+  const today = toDateInputValue(new Date());
+  const defaultStartDate = new Date();
+  defaultStartDate.setDate(defaultStartDate.getDate() - 60);
+  const defaultReportStart = toDateInputValue(defaultStartDate);
+  const [fechaInicio, setFechaInicio] = React.useState(defaultReportStart);
   const [fechaFin, setFechaFin] = React.useState(today);
   const [area, setArea] = React.useState("all");
-  const latestClosureCreatedAt = React.useMemo(
-    () => getLatestClosureCreatedAt(closureRows),
-    [closureRows],
-  );
   const closureGroups = React.useMemo(
     () => groupClosuresByDate(closureRows),
     [closureRows],
@@ -748,6 +745,7 @@ export function ReportesScreen({
       return;
     }
 
+    const requestId = ++loadRowsRequestRef.current;
     setLoading(true);
     setError(null);
 
@@ -756,6 +754,18 @@ export function ReportesScreen({
     const selectWithoutDesc =
       "id,fecha,fecha_registro,area_id,nombre_pedido,cantidad_danada,motivo_dano,tipo_trabajo,tipo_dano,persona_dano,observacion,trello_card_id,trello_card_name,trello_card_url,trello_list_id,trello_list_name,trello_board_id,trello_board_name";
 
+    const userAreaCode = normalizeAreaCode(user.area ?? "");
+    const resolvedUserAreaId =
+      userAreaId ?? areaIdByCode[userAreaCode] ?? null;
+
+    if (user.role !== "admin" && !resolvedUserAreaId) {
+      if (requestId === loadRowsRequestRef.current) {
+        setRows([]);
+        setLoading(false);
+      }
+      return;
+    }
+
     const buildQuery = (selectText: string) => {
       let q = supabase
         .from("pedidos_danados")
@@ -763,8 +773,8 @@ export function ReportesScreen({
         .order("fecha_registro", { ascending: false })
         .limit(300);
 
-      if (user.role !== "admin" && userAreaId) {
-        q = q.eq("area_id", userAreaId);
+      if (user.role !== "admin" && resolvedUserAreaId) {
+        q = q.eq("area_id", resolvedUserAreaId);
       }
 
       if (user.role === "admin" && area !== "all") {
@@ -786,26 +796,44 @@ export function ReportesScreen({
       qErr = fallback.error;
     }
 
+    if (requestId !== loadRowsRequestRef.current) return;
+
     if (!qErr) {
       const from = fechaInicio;
       const to = fechaFin;
       const filtered = ((data ?? []) as unknown as AnyRow[]).filter((row) => {
-        const registeredAt = String(row.fecha_registro ?? "");
-        if (
-          !historyOnly &&
-          latestClosureCreatedAt &&
-          registeredAt &&
-          registeredAt <= latestClosureCreatedAt
-        ) {
-          return false;
-        }
+        const reportDate = String(row.fecha ?? "").slice(0, 10);
+        const registeredDate = String(row.fecha_registro ?? "").slice(0, 10);
+        const dates = [reportDate, registeredDate].filter(Boolean);
+        if (dates.length === 0) return true;
+        const insideDateRange = dates.some(
+          (date) => (!from || date >= from) && (!to || date <= to),
+        );
+        if (!insideDateRange || historyOnly) return insideDateRange;
 
-        const raw = row.fecha ?? row.fecha_registro;
-        if (!raw) return true;
-        const normalized = String(raw).slice(0, 10);
-        if (from && normalized < from) return false;
-        if (to && normalized > to) return false;
-        return true;
+        const rowAreaCode = areaCodeById[String(row.area_id ?? "")];
+        const latestAreaClosure = closureRows
+          .filter(
+            (closure) =>
+              normalizeAreaCode(String(closure.area ?? "")) === rowAreaCode,
+          )
+          .sort((left, right) =>
+            String(right.corte_fin ?? right.created_at ?? "").localeCompare(
+              String(left.corte_fin ?? left.created_at ?? ""),
+            ),
+          )[0];
+        const cutoff = String(
+          latestAreaClosure?.corte_fin ?? latestAreaClosure?.created_at ?? "",
+        );
+        if (!cutoff || !registeredDate) return true;
+
+        const registeredTime = Date.parse(String(row.fecha_registro));
+        const cutoffTime = Date.parse(cutoff);
+        return (
+          !Number.isFinite(registeredTime) ||
+          !Number.isFinite(cutoffTime) ||
+          registeredTime > cutoffTime
+        );
       });
       setRows(filtered);
       if (historyOnly) setHistoryReportsLoaded(true);
@@ -820,15 +848,17 @@ export function ReportesScreen({
       setError(qErr.message);
       setRows([]);
     }
-    setLoading(false);
+    if (requestId === loadRowsRequestRef.current) setLoading(false);
   }, [
     area,
     areaIdByCode,
+    areaCodeById,
+    closureRows,
     fechaFin,
     fechaInicio,
     historyOnly,
     historyTab,
-    latestClosureCreatedAt,
+    user.area,
     user.role,
     userAreaId,
   ]);
@@ -839,7 +869,7 @@ export function ReportesScreen({
     let query = supabase
       .from("reportes_generados")
       .select(
-        "id,created_at,area,fecha_inicio,fecha_fin,generado_por,generado_por_nombre",
+        "id,created_at,corte_inicio,corte_fin,area,fecha_inicio,fecha_fin,generado_por,generado_por_nombre",
       )
       .order("created_at", { ascending: false })
       .limit(300);

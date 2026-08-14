@@ -93,7 +93,7 @@ async function requireAdmin(req: Request) {
     throw new Error('No autorizado: usuario no encontrado.');
   }
 
-  const meta = currentUser.user.user_metadata as { role?: string; activo?: boolean };
+  const meta = currentUser.user.app_metadata as { role?: string; activo?: boolean };
   if (meta.role !== 'admin' || meta.activo === false) {
     throw new Error('No autorizado: solo el administrador puede realizar esta accion.');
   }
@@ -148,13 +148,18 @@ serve(async (req: Request) => {
             area?: string;
             activo?: boolean;
           };
+          const appMeta = user.app_metadata as {
+            role?: string;
+            area?: string;
+            activo?: boolean;
+          };
           return {
             id: user.id,
             username: meta.username ?? '',
             fullName: meta.full_name ?? meta.username ?? '',
-            role: meta.role === 'admin' ? 'admin' : 'area',
-            area: meta.area,
-            activo: meta.activo !== false,
+            role: appMeta.role === 'admin' ? 'admin' : 'area',
+            area: appMeta.area ?? meta.area,
+            activo: appMeta.activo !== false && meta.activo !== false,
             platform: resolveUserPlatform(user as unknown as { app_metadata?: Record<string, unknown> }),
             lastSignInAt: typeof user.last_sign_in_at === 'string' ? user.last_sign_in_at : undefined,
             lastSeen: lastSeenMap[user.id],
@@ -181,6 +186,11 @@ serve(async (req: Request) => {
           area: payload.role === 'area' ? payload.area : undefined,
           activo: true,
         },
+        app_metadata: {
+          role: payload.role,
+          area: payload.role === 'area' ? payload.area : undefined,
+          activo: true,
+        },
       });
       if (error) throw error;
       return json({ success: true });
@@ -193,10 +203,14 @@ serve(async (req: Request) => {
       validateUserPayload(payload);
 
       const username = payload.username.trim().toLowerCase();
+      const { data: currentUser, error: getErr } = await admin.auth.admin.getUserById(body.userId);
+      if (getErr || !currentUser.user) throw getErr ?? new Error('Usuario no encontrado.');
+      const existingAppMeta = (currentUser.user.app_metadata ?? {}) as Record<string, unknown>;
       const updateData: {
         email: string;
         email_confirm: boolean;
         user_metadata: Record<string, unknown>;
+        app_metadata: Record<string, unknown>;
         ban_duration: string;
         password?: string;
       } = {
@@ -205,6 +219,12 @@ serve(async (req: Request) => {
         user_metadata: {
           username,
           full_name: payload.fullName.trim(),
+          role: payload.role,
+          area: payload.role === 'area' ? payload.area : undefined,
+          activo: payload.activo,
+        },
+        app_metadata: {
+          ...existingAppMeta,
           role: payload.role,
           area: payload.role === 'area' ? payload.area : undefined,
           activo: payload.activo,
@@ -227,8 +247,10 @@ serve(async (req: Request) => {
       const { data: currentUser, error: getErr } = await admin.auth.admin.getUserById(body.userId);
       if (getErr) throw getErr;
       const existingMeta = (currentUser.user.user_metadata ?? {}) as Record<string, unknown>;
+      const existingAppMeta = (currentUser.user.app_metadata ?? {}) as Record<string, unknown>;
       const { error } = await admin.auth.admin.updateUserById(body.userId, {
         user_metadata: { ...existingMeta, activo },
+        app_metadata: { ...existingAppMeta, activo },
         ban_duration: activo ? 'none' : '876600h',
       });
       if (error) throw error;
